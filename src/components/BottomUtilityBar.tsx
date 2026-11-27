@@ -296,11 +296,6 @@ export const BottomUtilityBar: React.FC<BottomUtilityBarProps> = ({
             <span>3D Map</span>
           </button>
         </div>
-
-        <span className="hidden lg:inline text-[10px] text-slate-400 shrink-0">
-          Brigg<span className="text-[#9D7BFF]">.AI</span> · Powered by{' '}
-          <span className="text-[#C4B5FD] font-semibold">KendriBanks™</span>
-        </span>
       </footer>
     </div>
   );

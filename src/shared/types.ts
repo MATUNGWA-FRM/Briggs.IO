@@ -2,6 +2,20 @@ export type ChainId = 'solana';
 
 export type BriggMode = 'SHITCOIN' | 'MEMECOIN';
 
+export const SHITCOIN_MAX_AGE_MINUTES = 3 * 24 * 60; // 4,320m = 3 days initial baseline
+export const MEMECOIN_MIN_AGE_MINUTES = 30 * 24 * 60; // 43,200m = 1 month (30 days) baseline
+
+export interface TokenClassClassification {
+  classified_mode: BriggMode;
+  initial_rule_class: 'SHITCOIN' | 'TRANSITION' | 'MEMECOIN';
+  ml_shitcoin_prob_pct: number;
+  ml_memecoin_prob_pct: number;
+  age_minutes: number;
+  age_days: number;
+  matches_active_mode: boolean;
+  classification_reason: string;
+}
+
 export type Horizon = '4M' | '15M' | '1H' | '4H' | '24H';
 
 export type ChartTimeframe = '1S' | '1M' | '5M' | '15M' | '1H' | '4H' | '24H';
@@ -540,6 +554,7 @@ export interface BriggScorePanelData {
   execution_quality: number; // 0..100
   market_regime: MarketRegimeType;
   action_state: ActionState;
+  classification: TokenClassClassification;
   no_trade: NoTradeEvaluation;
   model_outputs: {
     momentum_score: number;
@@ -718,6 +733,7 @@ export interface ScannerTokenSummary {
   confidence_pct: number;
   execution_quality: number;
   action_state: ActionState;
+  classification: TokenClassClassification;
   ranking_explanation: string;
   has_source_conflict: boolean;
   data_status: DataStatus;

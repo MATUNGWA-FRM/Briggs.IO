@@ -38,11 +38,20 @@ import {
 } from '../shared/chartHelpers.ts';
 import { LAYOUT_PRESETS, sanitizeLayoutState } from '../shared/layoutConfig.ts';
 import {
+  APP_THEME_PRESETS,
   DEFAULT_TERMINAL_COLORS,
+  findMatchingThemePresetId,
   isDefaultThemeColors,
   resetDefaultThemeColors,
   sanitizeThemeColors,
 } from '../shared/themeConfig.ts';
+import {
+  addCustomGlossaryTerm,
+  BRIGG_TERMINOLOGY,
+  extractGlossaryTermsFromContext,
+  mergeGlossaryEntries,
+  removeGlossaryTerm,
+} from '../shared/terminology.ts';
 
 describe('Brigg.AI V1 Core Verification Suite', () => {
   beforeEach(() => {
@@ -668,5 +677,41 @@ describe('Brigg.AI V1 Core Verification Suite', () => {
     const reset = resetDefaultThemeColors();
     expect(reset).toEqual(DEFAULT_TERMINAL_COLORS);
     expect(isDefaultThemeColors(reset)).toBe(true);
+    expect(APP_THEME_PRESETS.length).toBeGreaterThanOrEqual(4);
+    expect(findMatchingThemePresetId(APP_THEME_PRESETS[1].colors)).toBe(APP_THEME_PRESETS[1].id);
+  });
+
+  it('auto-updates Glossary with newly encountered terms and supports adding custom words', () => {
+    const detected = extractGlossaryTermsFromContext({
+      analysis: null,
+      socialEvents: [
+        {
+          id: 'ev_1',
+          platform: 'x',
+          author: '@desk',
+          channel: 'Solana CT',
+          text: '$BONK holding above VWAP after CTO and high MCap breakout!',
+          sentiment: 'BULLISH',
+          engagement: 50,
+          organicity: 'ORGANIC',
+          timestamp_ms: Date.now(),
+          data_status: 'MOCK',
+        },
+      ],
+    });
+    expect(detected.length).toBeGreaterThanOrEqual(3);
+    const merged = mergeGlossaryEntries(BRIGG_TERMINOLOGY, detected);
+    expect(merged.addedCount).toBeGreaterThanOrEqual(3);
+    expect(merged.entries.some((e) => e.term.includes('VWAP') && e.source === 'AUTO_DETECTED')).toBe(true);
+
+    const withCustom = addCustomGlossaryTerm(merged.entries, {
+      term: 'Liquidity Sweep',
+      definition: 'Sharp wick below support stops before rapid reversal.',
+    });
+    expect(withCustom[0].term).toBe('Liquidity Sweep');
+    expect(withCustom[0].source).toBe('CUSTOM');
+
+    const afterRemove = removeGlossaryTerm(withCustom, 'Liquidity Sweep');
+    expect(afterRemove.some((e) => e.term === 'Liquidity Sweep')).toBe(false);
   });
 });

@@ -65,6 +65,15 @@ import {
   saveThemeColors,
   type TerminalThemeColors,
 } from './shared/themeConfig';
+import {
+  addCustomGlossaryTerm,
+  extractGlossaryTermsFromContext,
+  loadSavedGlossaryEntries,
+  mergeGlossaryEntries,
+  removeGlossaryTerm,
+  saveGlossaryEntries,
+  type TerminologyEntry,
+} from './shared/terminology';
 import type {
   AlertEvent,
   AlertRule,
@@ -149,10 +158,14 @@ export default function App() {
     loadSavedNotificationPrefs()
   );
   const [themeColors, setThemeColors] = useState<TerminalThemeColors>(() => loadSavedThemeColors());
+  const [glossaryEntries, setGlossaryEntries] = useState<TerminologyEntry[]>(() =>
+    loadSavedGlossaryEntries()
+  );
+  const [lastGlossaryAddedCount, setLastGlossaryAddedCount] = useState<number>(0);
   const [toastNowMs, setToastNowMs] = useState<number>(() => Date.now());
   const lastBuyToastMsRef = useRef<number>(0);
 
-  // Persist layout, theme colors & notification preferences to localStorage
+  // Persist layout, theme colors, glossary & notification preferences to localStorage
   useEffect(() => {
     saveLayout(layout);
   }, [layout]);
@@ -163,8 +176,32 @@ export default function App() {
   }, [themeColors]);
 
   useEffect(() => {
+    saveGlossaryEntries(glossaryEntries);
+  }, [glossaryEntries]);
+
+  useEffect(() => {
     saveNotificationPrefs(notificationPrefs);
   }, [notificationPrefs]);
+
+  // Auto-update Glossary whenever new trading/slang words appear in live analysis or social feeds
+  const syncGlossaryFromContext = useCallback(() => {
+    const detected = extractGlossaryTermsFromContext({
+      analysis,
+      socialEvents: socialFeed,
+    });
+    if (detected.length === 0) return;
+    setGlossaryEntries((prev) => {
+      const { entries, addedCount } = mergeGlossaryEntries(prev, detected);
+      if (addedCount > 0) {
+        setLastGlossaryAddedCount(addedCount);
+      }
+      return entries;
+    });
+  }, [analysis, socialFeed]);
+
+  useEffect(() => {
+    syncGlossaryFromContext();
+  }, [syncGlossaryFromContext]);
 
   // 250ms tick while 2.5s pop-up is active (1s thereafter) for 2-minute notification bar
   useEffect(() => {
@@ -1157,6 +1194,16 @@ export default function App() {
         themeColors={themeColors}
         onChangeThemeColors={setThemeColors}
         onResetDefaultColors={handleResetDefaultColors}
+        glossaryEntries={glossaryEntries}
+        lastGlossaryAddedCount={lastGlossaryAddedCount}
+        onAddGlossaryTerm={(input) => {
+          setGlossaryEntries((prev) => addCustomGlossaryTerm(prev, input));
+          setLastGlossaryAddedCount(1);
+        }}
+        onRemoveGlossaryTerm={(term) =>
+          setGlossaryEntries((prev) => removeGlossaryTerm(prev, term))
+        }
+        onSyncGlossary={syncGlossaryFromContext}
         notificationPrefs={notificationPrefs}
         onChangeNotificationPrefs={setNotificationPrefs}
         activeBuyBarCount={buyNotifications.length}
