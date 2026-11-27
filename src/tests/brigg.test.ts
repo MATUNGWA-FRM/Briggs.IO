@@ -11,10 +11,26 @@ import {
   rollbackToModelVersion,
   runDailyLearningCycle,
 } from '../server/ml/learningPipeline.ts';
+import { buildChartIntelligence, tfToSeconds } from '../server/analytics/chartAnalytics.ts';
 import { analyzeHoldersAndWallets } from '../server/analytics/holders.ts';
 import { buildBubbleMapPayload } from '../server/graph/bubbleMapBuilder.ts';
 import { ensureInitialMlData } from '../server/ml/seedHistory.ts';
-import { isValidSolanaAddress, sanitizeTextInput } from '../server/security/validators.ts';
+import {
+  isValidSolanaAddress,
+  sanitizeTextInput,
+  ScannerQuerySchema,
+  TokenAnalysisQuerySchema,
+} from '../server/security/validators.ts';
+import {
+  BUY_NOTIFICATION_TTL_MS,
+  BUY_POPUP_TTL_MS,
+  dismissPopupNotificationById,
+  getActivePopupNotifications,
+  pruneExpiredBuyNotifications,
+  removeBuyNotificationById,
+  type BuyNotificationItem,
+} from '../components/BuyNotificationStack.tsx';
+import { sanitizeNotificationPrefs } from '../shared/notificationConfig.ts';
 import { LAYOUT_PRESETS, sanitizeLayoutState } from '../shared/layoutConfig.ts';
 
 describe('Brigg.AI V1 Core Verification Suite', () => {
@@ -467,5 +483,125 @@ describe('Brigg.AI V1 Core Verification Suite', () => {
 
     expect(LAYOUT_PRESETS.CHART_FOCUS.chartHeight).toBeGreaterThan(LAYOUT_PRESETS.DEFAULT.chartHeight);
     expect(LAYOUT_PRESETS.ANALYSIS_FOCUS.openTabs).toContain('ANALYSIS');
+    expect(LAYOUT_PRESETS.DEFAULT.openTabs).toContain('SOCIAL_TRACKER');
+
+    const withSocial = sanitizeLayoutState({ openTabs: ['SOCIAL_TRACKER', 'GRAPH'], activeTab: 'SOCIAL_TRACKER' });
+    expect(withSocial.openTabs).toEqual(['SOCIAL_TRACKER', 'GRAPH']);
+    expect(withSocial.activeTab).toBe('SOCIAL_TRACKER');
+  });
+
+  it('supports 1S candlestick timeframe and scanner refresh validation', () => {
+    expect(tfToSeconds('1S')).toBe(1);
+    const tq = TokenAnalysisQuerySchema.safeParse({ timeframe: '1S' });
+    expect(tq.success).toBe(true);
+    const sq = ScannerQuerySchema.safeParse({ refresh: 'true' });
+    expect(sq.success).toBe(true);
+
+    const chart = buildChartIntelligence(
+      {
+        primaryMarket: {
+          provider: 'dexscreener',
+          address: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
+          symbol: 'BONK',
+          name: 'Bonk',
+          price_usd: 0.000024,
+          price_change_5m: 1.5,
+          price_change_1h: 4.2,
+          price_change_6h: 8.1,
+          price_change_24h: 12.0,
+          liquidity_usd: 5_000_000,
+          market_cap_usd: 1_500_000_000,
+          fdv_usd: 1_500_000_000,
+          volume_5m_usd: 120_000,
+          volume_1h_usd: 900_000,
+          volume_6h_usd: 4_200_000,
+          volume_24h_usd: 22_000_000,
+          buys_5m: 60,
+          sells_5m: 42,
+          buys_1h: 520,
+          sells_1h: 410,
+          buys_24h: 8200,
+          sells_24h: 7100,
+          dex: 'raydium',
+          pair_address: 'pair_1s',
+          quote_symbol: 'SOL',
+          pair_created_at_ms: Date.now() - 86_400_000,
+          pairs: [],
+          socials: {},
+          paid_boost_active: false,
+          boost_amount: 0,
+          meta: {
+            source: 'dexscreener',
+            source_timestamp: new Date().toISOString(),
+            ingestion_timestamp: new Date().toISOString(),
+            freshness_seconds: 1,
+            confidence: 0.9,
+            data_status: 'REAL',
+          },
+        },
+        marketFeeds: [],
+        socialFeeds: [],
+        conflicts: [],
+        allMeta: [],
+        overallStatus: 'REAL',
+        avgFreshnessSeconds: 1,
+        ingestionDelayMs: 25,
+      },
+      '1S'
+    );
+
+    expect(chart.timeframe).toBe('1S');
+    expect(chart.candles.length).toBe(90);
+    expect(chart.candles[1].time - chart.candles[0].time).toBe(1);
+  });
+
+  it('shows pop-ups on screen for 5s, retains them in notification bar for 2m, and supports position prefs & deletion', () => {
+    expect(BUY_POPUP_TTL_MS).toBe(5_000);
+    expect(BUY_NOTIFICATION_TTL_MS).toBe(120_000);
+
+    const start = 1_700_000_000_000;
+    const itemA: BuyNotificationItem = {
+      id: 'buy_1',
+      address: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
+      symbol: 'BONK',
+      price_usd: 0.000024,
+      amount_usd: 1200,
+      maker_short: '7xKp...3mQa',
+      source: 'LIVE_DEXSCREENER',
+      created_at_ms: start,
+      popup_expires_at_ms: start + BUY_POPUP_TTL_MS,
+      expires_at_ms: start + BUY_NOTIFICATION_TTL_MS,
+    };
+    const itemB: BuyNotificationItem = {
+      ...itemA,
+      id: 'buy_2',
+      created_at_ms: start + 30_000,
+      popup_expires_at_ms: start + 30_000 + BUY_POPUP_TTL_MS,
+      expires_at_ms: start + 30_000 + BUY_NOTIFICATION_TTL_MS,
+    };
+
+    // Screen pop-up is visible at +4s and hides at +5s while staying in the 2m bar
+    expect(getActivePopupNotifications([itemA], start + 4_000)).toHaveLength(1);
+    expect(getActivePopupNotifications([itemA], start + 5_000)).toHaveLength(0);
+    expect(pruneExpiredBuyNotifications([itemA], start + 5_000)).toHaveLength(1);
+
+    // Dismissing pop-up hides it from screen early without deleting from 2m bar
+    const dismissed = dismissPopupNotificationById([itemA], 'buy_1');
+    expect(getActivePopupNotifications(dismissed, start + 1_000)).toHaveLength(0);
+    expect(pruneExpiredBuyNotifications(dismissed, start + 60_000)).toHaveLength(1);
+
+    // Notification bar keeps items for 2 minutes (120s)
+    expect(pruneExpiredBuyNotifications([itemA, itemB], start + 119_000)).toHaveLength(2);
+    expect(pruneExpiredBuyNotifications([itemA, itemB], start + 120_000).map((x) => x.id)).toEqual(['buy_2']);
+
+    // Manual deletion removes target from both pop-up and 2m bar immediately
+    expect(removeBuyNotificationById([itemA, itemB], 'buy_2').map((x) => x.id)).toEqual(['buy_1']);
+
+    // Validates 4-corner pop-up screen position preferences
+    expect(sanitizeNotificationPrefs({ position: 'TOP_LEFT', popupsEnabled: false })).toEqual({
+      position: 'TOP_LEFT',
+      popupsEnabled: false,
+    });
+    expect(sanitizeNotificationPrefs({ position: 'INVALID_POS' }).position).toBe('BOTTOM_RIGHT');
   });
 });

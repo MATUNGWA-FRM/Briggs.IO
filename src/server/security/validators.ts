@@ -35,12 +35,13 @@ export const ScannerQuerySchema = z.object({
   minOpportunity: z.coerce.number().min(0).max(100).optional(),
   hideNewPairs: z.enum(['true', 'false']).optional(),
   migratedOnly: z.enum(['true', 'false']).optional(),
+  refresh: z.enum(['true', 'false']).optional(),
 });
 
 export const TokenAnalysisQuerySchema = z.object({
   mode: z.enum(['SHITCOIN', 'MEMECOIN']).default('SHITCOIN'),
   horizon: z.enum(['4M', '15M', '1H', '4H', '24H']).default('15M'),
-  timeframe: z.enum(['1M', '5M', '15M', '1H', '4H', '24H']).default('15M'),
+  timeframe: z.enum(['1S', '1M', '5M', '15M', '1H', '4H', '24H']).default('15M'),
   positionSizeUsd: z.coerce.number().min(50).max(500_000).default(1500),
 });
 

@@ -19,10 +19,20 @@ import { AnalysisOverviewPanel } from './components/AnalysisOverviewPanel';
 import { BriggChart } from './components/BriggChart';
 import { BubbleMap2D } from './components/BubbleMap2D';
 import { BubbleMap3D } from './components/BubbleMap3D';
+import {
+  BUY_NOTIFICATION_TTL_MS,
+  BUY_POPUP_TTL_MS,
+  BuyNotificationStack,
+  dismissPopupNotificationById,
+  pruneExpiredBuyNotifications,
+  removeBuyNotificationById,
+  type BuyNotificationItem,
+} from './components/BuyNotificationStack';
 import { ChecklistAndPredictionsPanel } from './components/ChecklistAndPredictionsPanel';
 import { ForensicsPanel } from './components/ForensicsPanel';
 import { HoldersIntelligencePanel } from './components/HoldersIntelligencePanel';
 import { LiquidityVolumePanel } from './components/LiquidityVolumePanel';
+import { LiveSocialTracker } from './components/LiveSocialTracker';
 import { LiveTradesTape } from './components/LiveTradesTape';
 import { ModelUpdateCenter } from './components/ModelUpdateCenter';
 import { ScorePanel } from './components/ScorePanel';
@@ -42,6 +52,11 @@ import {
   type WorkspaceLayoutState,
   type WorkspaceTabId,
 } from './shared/layoutConfig';
+import {
+  loadSavedNotificationPrefs,
+  saveNotificationPrefs,
+  type NotificationPrefs,
+} from './shared/notificationConfig';
 import type {
   AlertEvent,
   AlertRule,
@@ -54,6 +69,7 @@ import type {
   LiveTradeEvent,
   MarketRegimeState,
   ScannerTokenSummary,
+  SocialMentionEvent,
   TokenFullAnalysis,
 } from './shared/types';
 
@@ -91,6 +107,10 @@ export default function App() {
   const [sortBy, setSortBy] = useState('opportunity');
   const [scannerTokens, setScannerTokens] = useState<ScannerTokenSummary[]>([]);
   const [scannerLoading, setScannerLoading] = useState(true);
+  const [autoRefreshSec, setAutoRefreshSec] = useState<0 | 15 | 30 | 60>(30);
+  const [countdownSec, setCountdownSec] = useState<number>(30);
+  const [newAddresses, setNewAddresses] = useState<Set<string>>(() => new Set());
+  const seenAddressesRef = useRef<Set<string>>(new Set());
   const [regime, setRegime] = useState<MarketRegimeState | undefined>(undefined);
 
   const [selectedAddress, setSelectedAddress] = useState<string>(DEFAULT_TOKEN);
@@ -102,6 +122,9 @@ export default function App() {
   const [streaming, setStreaming] = useState(true);
   const [liveTick, setLiveTick] = useState<LiveMarketTick | null>(null);
   const [recentTrades, setRecentTrades] = useState<LiveTradeEvent[]>([]);
+  const [socialFeed, setSocialFeed] = useState<SocialMentionEvent[]>([]);
+  const [socialStreaming, setSocialStreaming] = useState(true);
+  const [socialLoading, setSocialLoading] = useState(false);
   const [pricePulse, setPricePulse] = useState<'UP' | 'DOWN' | 'FLAT'>('FLAT');
   const prevPriceRef = useRef<number>(0);
 
@@ -113,11 +136,32 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [alertRules, setAlertRules] = useState<AlertRule[]>([]);
   const [alertEvents, setAlertEvents] = useState<AlertEvent[]>([]);
+  const [buyNotifications, setBuyNotifications] = useState<BuyNotificationItem[]>([]);
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPrefs>(() =>
+    loadSavedNotificationPrefs()
+  );
+  const [toastNowMs, setToastNowMs] = useState<number>(() => Date.now());
+  const lastBuyToastMsRef = useRef<number>(0);
 
-  // Persist layout changes to localStorage
+  // Persist layout & notification preferences to localStorage
   useEffect(() => {
     saveLayout(layout);
   }, [layout]);
+
+  useEffect(() => {
+    saveNotificationPrefs(notificationPrefs);
+  }, [notificationPrefs]);
+
+  // 1-second timer to update 2-minute countdown & prune expired buy notifications
+  useEffect(() => {
+    if (buyNotifications.length === 0) return;
+    const timer = setInterval(() => {
+      const now = Date.now();
+      setToastNowMs(now);
+      setBuyNotifications((prev) => pruneExpiredBuyNotifications(prev, now));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [buyNotifications.length]);
 
   // Close inline "+ Add Tab" dropdown on outside click
   useEffect(() => {
@@ -249,7 +293,7 @@ export default function App() {
   }, []);
 
   const loadScanner = useCallback(
-    async (searchQuery?: string) => {
+    async (searchQuery?: string, forceRefresh = false) => {
       setScannerLoading(true);
       try {
         const params = new URLSearchParams({
@@ -259,29 +303,65 @@ export default function App() {
           sortBy,
         });
         if (searchQuery) params.set('q', searchQuery);
+        if (forceRefresh) params.set('refresh', 'true');
         const resp = await fetch(`/api/scanner?${params.toString()}`);
         const data = await resp.json();
         if (Array.isArray(data.tokens)) {
-          setScannerTokens(data.tokens);
+          const incoming = data.tokens as ScannerTokenSummary[];
+          if (seenAddressesRef.current.size > 0) {
+            const newlyDiscovered = new Set<string>();
+            for (const tok of incoming) {
+              if (!seenAddressesRef.current.has(tok.address)) {
+                newlyDiscovered.add(tok.address);
+              }
+            }
+            if (newlyDiscovered.size > 0) {
+              setNewAddresses(newlyDiscovered);
+            }
+          }
+          for (const tok of incoming) {
+            seenAddressesRef.current.add(tok.address);
+          }
+
+          setScannerTokens(incoming);
           setRegime(data.regime);
-          if (searchQuery && data.tokens.length > 0) {
-            setSelectedAddress(data.tokens[0].address);
+          if (searchQuery && incoming.length > 0) {
+            setSelectedAddress(incoming[0].address);
           }
         }
       } catch (err) {
         setErrorBanner(`Scanner unavailable: ${String(err)}`);
       } finally {
         setScannerLoading(false);
+        if (autoRefreshSec > 0) {
+          setCountdownSec(autoRefreshSec);
+        }
       }
     },
-    [mode, horizon, preset, sortBy]
+    [mode, horizon, preset, sortBy, autoRefreshSec]
   );
+
+  const loadSocialFeed = useCallback(async (targetAddress = selectedAddress) => {
+    setSocialLoading(true);
+    try {
+      const resp = await fetch(`/api/social/${encodeURIComponent(targetAddress)}`);
+      const data = await resp.json();
+      if (Array.isArray(data.events)) {
+        setSocialFeed(data.events);
+      }
+    } catch {
+      // ignore transient social feed fetch errors
+    } finally {
+      setSocialLoading(false);
+    }
+  }, [selectedAddress]);
 
   const loadTokenAnalysis = useCallback(async () => {
     setAnalysisLoading(true);
     setErrorBanner(null);
     setLiveTick(null);
     setRecentTrades([]);
+    setSocialFeed([]);
     prevPriceRef.current = 0;
     try {
       const params = new URLSearchParams({
@@ -300,22 +380,42 @@ export default function App() {
       prevPriceRef.current = data.forensics?.price_usd || 0;
       setSelectedWallet(null);
       loadAlerts();
+      loadSocialFeed(selectedAddress);
     } catch (err) {
       setErrorBanner(`Analysis error: ${String(err)}`);
     } finally {
       setAnalysisLoading(false);
     }
-  }, [selectedAddress, mode, horizon, timeframe, positionSizeUsd, loadAlerts]);
+  }, [selectedAddress, mode, horizon, timeframe, positionSizeUsd, loadAlerts, loadSocialFeed]);
 
   useEffect(() => {
     loadScanner();
   }, [loadScanner]);
 
+  // Automatic scanner countdown & reload for newly listed Solana pairs
+  useEffect(() => {
+    if (autoRefreshSec <= 0 || activeView !== 'TERMINAL') {
+      setCountdownSec(autoRefreshSec);
+      return;
+    }
+    setCountdownSec(autoRefreshSec);
+    const timer = setInterval(() => {
+      setCountdownSec((prev) => {
+        if (prev <= 1) {
+          void loadScanner(undefined, true);
+          return autoRefreshSec;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [autoRefreshSec, activeView, loadScanner]);
+
   useEffect(() => {
     loadTokenAnalysis();
   }, [loadTokenAnalysis]);
 
-  // Real-Time SSE Candle & Orderflow Stream (/api/stream/:address)
+  // Real-Time SSE Candle, Orderflow & Social Tracker Stream (/api/stream/:address)
   useEffect(() => {
     if (!streaming || !selectedAddress || activeView !== 'TERMINAL') return;
 
@@ -335,6 +435,31 @@ export default function App() {
 
         if (tick.trade) {
           setRecentTrades((prev) => [tick.trade!, ...prev].slice(0, 45));
+          if (tick.trade.side === 'BUY' && notificationPrefs.popupsEnabled) {
+            const now = Date.now();
+            if (now - lastBuyToastMsRef.current >= 5500) {
+              lastBuyToastMsRef.current = now;
+              setToastNowMs(now);
+              const nextNotice: BuyNotificationItem = {
+                id: `buy_toast_${tick.trade.id}`,
+                address: tick.address,
+                symbol: tick.symbol,
+                price_usd: tick.trade.price_usd,
+                amount_usd: tick.trade.amount_usd,
+                maker_short: tick.trade.maker_short,
+                source: tick.trade.source,
+                created_at_ms: now,
+                popup_expires_at_ms: now + BUY_POPUP_TTL_MS,
+                expires_at_ms: now + BUY_NOTIFICATION_TTL_MS,
+              };
+              setBuyNotifications((prev) =>
+                [nextNotice, ...pruneExpiredBuyNotifications(prev, now)].slice(0, 20)
+              );
+            }
+          }
+        }
+        if (tick.social_event && socialStreaming) {
+          setSocialFeed((prev) => [tick.social_event!, ...prev].slice(0, 40));
         }
       } catch {
         // ignore malformed tick packet
@@ -347,7 +472,7 @@ export default function App() {
       es.removeEventListener('tick', onTick);
       es.close();
     };
-  }, [selectedAddress, timeframe, streaming, activeView]);
+  }, [selectedAddress, timeframe, streaming, activeView, socialStreaming, notificationPrefs.popupsEnabled]);
 
   const handleTokenSearch = (queryOrAddress: string) => {
     const clean = queryOrAddress.trim();
@@ -453,15 +578,11 @@ export default function App() {
         onViewChange={setActiveView}
         onTokenSearch={handleTokenSearch}
         unreadAlertsCount={unreadAlertsCount}
+        activeBuyBarCount={buyNotifications.length}
         onOpenAlerts={() => setAlertsOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
         dataStatus={analysis?.forensics.data_status || 'LOADING'}
         streaming={streaming}
-        layout={layout}
-        onApplyPreset={handleApplyPreset}
-        onTogglePanel={handleTogglePanel}
-        onToggleTab={handleToggleTab}
-        onResetLayout={handleResetLayout}
       />
 
       {activeView === 'MODEL_CENTER' ? (
@@ -480,7 +601,11 @@ export default function App() {
                 sortBy={sortBy}
                 onSortChange={setSortBy}
                 loading={scannerLoading}
-                onRefresh={() => loadScanner()}
+                onRefresh={() => loadScanner(undefined, true)}
+                autoRefreshSec={autoRefreshSec}
+                onAutoRefreshChange={setAutoRefreshSec}
+                countdownSec={countdownSec}
+                newAddresses={newAddresses}
                 regime={regime}
                 widthPx={layout.leftWidth}
                 onCollapse={() => handleTogglePanel('showScanner')}
@@ -856,6 +981,17 @@ export default function App() {
                               streaming={streaming}
                             />
                           )}
+                          {layout.activeTab === 'SOCIAL_TRACKER' && (
+                            <LiveSocialTracker
+                              symbol={analysis.forensics.symbol}
+                              events={socialFeed}
+                              social={analysis.social}
+                              streaming={streaming && socialStreaming}
+                              onToggleStreaming={() => setSocialStreaming((v) => !v)}
+                              onRefresh={() => loadSocialFeed(analysis.forensics.address)}
+                              loading={socialLoading}
+                            />
+                          )}
                           {layout.activeTab === 'FORENSICS' && <ForensicsPanel analysis={analysis} />}
                           {layout.activeTab === 'LIQUIDITY_VOLUME' && (
                             <LiquidityVolumePanel
@@ -889,7 +1025,16 @@ export default function App() {
                             />
                           )}
                           {layout.activeTab === 'SOCIAL_RISK' && (
-                            <SocialNarrativePanel social={analysis.social} risk={analysis.risk} />
+                            <SocialNarrativePanel
+                              social={analysis.social}
+                              risk={analysis.risk}
+                              symbol={analysis.forensics.symbol}
+                              socialEvents={socialFeed}
+                              socialStreaming={streaming && socialStreaming}
+                              onToggleSocialStreaming={() => setSocialStreaming((v) => !v)}
+                              onRefreshSocial={() => loadSocialFeed(analysis.forensics.address)}
+                              socialLoading={socialLoading}
+                            />
                           )}
                           {layout.activeTab === 'CHECKLIST_PREDICTIONS' && (
                             <ChecklistAndPredictionsPanel
@@ -945,6 +1090,18 @@ export default function App() {
         onClose={() => setAlertsOpen(false)}
         rules={alertRules}
         events={alertEvents}
+        buyNotifications={buyNotifications}
+        nowMs={toastNowMs}
+        notificationPrefs={notificationPrefs}
+        onChangeNotificationPrefs={setNotificationPrefs}
+        onDeleteBuyNotification={(id) =>
+          setBuyNotifications((prev) => removeBuyNotificationById(prev, id))
+        }
+        onClearAllBuyNotifications={() => setBuyNotifications([])}
+        onSelectToken={(addr) => {
+          setSelectedAddress(addr);
+          setActiveView('TERMINAL');
+        }}
         onCreateRule={async (input) => {
           await fetch('/api/alerts/rules', {
             method: 'POST',
@@ -962,6 +1119,31 @@ export default function App() {
       <SettingsObservabilityModal
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+        layout={layout}
+        onApplyPreset={handleApplyPreset}
+        onTogglePanel={handleTogglePanel}
+        onToggleTab={handleToggleTab}
+        onResetLayout={handleResetLayout}
+        notificationPrefs={notificationPrefs}
+        onChangeNotificationPrefs={setNotificationPrefs}
+        activeBuyBarCount={buyNotifications.length}
+        onClearAllBuyNotifications={() => setBuyNotifications([])}
+      />
+
+      <BuyNotificationStack
+        notifications={buyNotifications}
+        nowMs={toastNowMs}
+        enabled={notificationPrefs.popupsEnabled}
+        position={notificationPrefs.position}
+        onDismissPopup={(id) =>
+          setBuyNotifications((prev) => dismissPopupNotificationById(prev, id))
+        }
+        onDelete={(id) => setBuyNotifications((prev) => removeBuyNotificationById(prev, id))}
+        onOpenNotificationBar={() => setAlertsOpen(true)}
+        onSelectToken={(addr) => {
+          setSelectedAddress(addr);
+          setActiveView('TERMINAL');
+        }}
       />
     </div>
   );

@@ -13,7 +13,7 @@ export const ForensicsPanel: React.FC<ForensicsPanelProps> = ({ analysis }) => {
     <div className="space-y-5 text-xs">
       {/* Identity & Contract Forensics */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <div className="p-3.5 rounded border border-slate-800 bg-[#111622] space-y-2.5">
+        <div className="p-3.5 rounded border border-[#1E2330] bg-[#0C0E14] space-y-2.5">
           <div className="flex items-center justify-between">
             <h3 className="font-display text-sm font-semibold text-slate-100">Token Forensics</h3>
             <span className="font-mono text-[11px] text-slate-400">
@@ -36,7 +36,7 @@ export const ForensicsPanel: React.FC<ForensicsPanelProps> = ({ analysis }) => {
             </div>
             <div>
               <span className="text-slate-400 font-sans block">Migration Status</span>
-              <span className="text-sky-300">{forensics.migration_status}</span>
+              <span className="text-[#C4B5FD]">{forensics.migration_status}</span>
             </div>
             <div>
               <span className="text-slate-400 font-sans block">Initial Liquidity</span>
@@ -87,7 +87,7 @@ export const ForensicsPanel: React.FC<ForensicsPanelProps> = ({ analysis }) => {
         </div>
 
         {/* Lifecycle Timeline (§8) */}
-        <div className="p-3.5 rounded border border-slate-800 bg-[#111622]">
+        <div className="p-3.5 rounded border border-[#1E2330] bg-[#0C0E14]">
           <div className="flex items-center justify-between mb-2.5">
             <h3 className="font-display text-sm font-semibold text-slate-100">Lifecycle Reconstruction</h3>
             <span className="text-[11px] text-slate-400">Migration ≠ Safety</span>
@@ -96,7 +96,7 @@ export const ForensicsPanel: React.FC<ForensicsPanelProps> = ({ analysis }) => {
             {forensics.lifecycle_timeline.map((step) => (
               <div key={step.stage} className="flex items-start gap-2.5">
                 <CheckCircle2
-                  className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${step.completed ? 'text-sky-400' : 'text-slate-600'}`}
+                  className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${step.completed ? 'text-[#9D7BFF]' : 'text-slate-600'}`}
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-2">
@@ -114,14 +114,14 @@ export const ForensicsPanel: React.FC<ForensicsPanelProps> = ({ analysis }) => {
       </div>
 
       {/* Data Sources, Conflicts & Freshness (§5, §50) */}
-      <div className="p-3.5 rounded border border-slate-800 bg-[#111622] space-y-3">
+      <div className="p-3.5 rounded border border-[#1E2330] bg-[#0C0E14] space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-display text-sm font-semibold text-slate-100">
             Data Sources, Integrity & Freshness
           </h3>
           <div className="flex items-center gap-3 font-mono text-[11px] text-slate-300 tabular-nums">
             <span className="flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5 text-sky-400" />
+              <Clock className="w-3.5 h-3.5 text-[#9D7BFF]" />
               Updated {freshness.updated_seconds_ago}s ago
             </span>
             <span>Ingest: {freshness.ingestion_delay_ms}ms</span>

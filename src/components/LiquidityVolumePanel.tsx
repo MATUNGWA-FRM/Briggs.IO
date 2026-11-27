@@ -20,24 +20,24 @@ export const LiquidityVolumePanel: React.FC<LiquidityVolumePanelProps> = ({
     <div className="space-y-5 text-xs">
       {/* Liquidity & Slippage Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <div className="p-3.5 rounded border border-slate-800 bg-[#111622] space-y-3">
+        <div className="p-3.5 rounded border border-[#1E2330] bg-[#0C0E14] space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-display text-sm font-semibold text-slate-100">Liquidity Intelligence</h3>
             <span className="font-mono text-[11px] text-slate-400">[{liquidity.data_status}]</span>
           </div>
 
           <div className="grid grid-cols-3 gap-2 font-mono tabular-nums">
-            <div className="p-2 rounded bg-[#0B0E14] border border-slate-800/80">
+            <div className="p-2 rounded bg-[#08090D] border border-[#1E2330]">
               <div className="text-[10px] text-slate-400 font-sans">Liquidity Risk</div>
               <div className={`text-base font-bold ${liquidity.liquidity_risk_score > 60 ? 'text-rose-400' : 'text-slate-100'}`}>
                 {liquidity.liquidity_risk_score}/100
               </div>
             </div>
-            <div className="p-2 rounded bg-[#0B0E14] border border-slate-800/80">
+            <div className="p-2 rounded bg-[#08090D] border border-[#1E2330]">
               <div className="text-[10px] text-slate-400 font-sans">Execution Quality</div>
-              <div className="text-base font-bold text-sky-300">{liquidity.execution_quality_score}/100</div>
+              <div className="text-base font-bold text-[#C4B5FD]">{liquidity.execution_quality_score}/100</div>
             </div>
-            <div className="p-2 rounded bg-[#0B0E14] border border-slate-800/80">
+            <div className="p-2 rounded bg-[#08090D] border border-[#1E2330]">
               <div className="text-[10px] text-slate-400 font-sans">Data Quality</div>
               <div className="text-base font-bold text-slate-100">{liquidity.data_quality_score}/100</div>
             </div>
@@ -81,7 +81,7 @@ export const LiquidityVolumePanel: React.FC<LiquidityVolumePanelProps> = ({
         </div>
 
         {/* Slippage & Execution Simulator (§26) */}
-        <div className="p-3.5 rounded border border-slate-800 bg-[#111622] space-y-3">
+        <div className="p-3.5 rounded border border-[#1E2330] bg-[#0C0E14] space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-display text-sm font-semibold text-slate-100">Slippage & Execution Intelligence</h3>
             <span className="font-mono text-[11px] text-sky-400">Size: ${positionSizeUsd.toLocaleString()}</span>
@@ -95,10 +95,10 @@ export const LiquidityVolumePanel: React.FC<LiquidityVolumePanelProps> = ({
                   key={sz}
                   type="button"
                   onClick={() => onPositionSizeChange(sz)}
-                  className={`px-2 py-1 text-[11px] font-mono rounded border ${
+                  className={`px-2 py-1 text-[11px] font-mono rounded-sm border ${
                     positionSizeUsd === sz
-                      ? 'border-sky-500/60 bg-sky-500/20 text-sky-300'
-                      : 'border-slate-800 bg-[#0B0E14] text-slate-400 hover:text-slate-200'
+                      ? 'border-[#7C5CFF]/60 bg-[#7C5CFF]/20 text-[#C4B5FD]'
+                      : 'border-[#1E2330] bg-[#08090D] text-slate-400 hover:text-slate-200'
                   }`}
                 >
                   ${sz >= 1000 ? `${sz / 1000}k` : sz}
@@ -132,7 +132,7 @@ export const LiquidityVolumePanel: React.FC<LiquidityVolumePanelProps> = ({
             </div>
             <div>
               <span className="text-slate-400 font-sans block">Adjusted Exec Quality</span>
-              <span className="text-sky-300 font-semibold">{slippage.execution_quality_score}/100</span>
+              <span className="text-[#C4B5FD] font-semibold">{slippage.execution_quality_score}/100</span>
             </div>
           </div>
 
@@ -146,7 +146,7 @@ export const LiquidityVolumePanel: React.FC<LiquidityVolumePanelProps> = ({
       </div>
 
       {/* Volume Intelligence (§10) */}
-      <div className="p-3.5 rounded border border-slate-800 bg-[#111622] space-y-3">
+      <div className="p-3.5 rounded border border-[#1E2330] bg-[#0C0E14] space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="font-display text-sm font-semibold text-slate-100">Volume Intelligence</h3>
@@ -163,7 +163,7 @@ export const LiquidityVolumePanel: React.FC<LiquidityVolumePanelProps> = ({
               Wash Risk: <strong className={volume.anomalies.wash_trading_risk === 'HIGH' ? 'text-rose-400' : 'text-slate-200'}>{volume.anomalies.wash_trading_risk}</strong>
             </span>
             <span>
-              Quality: <strong className="text-sky-300">{volume.volume_quality_score}/100</strong>
+              Quality: <strong className="text-[#C4B5FD]">{volume.volume_quality_score}/100</strong>
             </span>
           </div>
         </div>

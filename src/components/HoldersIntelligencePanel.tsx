@@ -34,7 +34,7 @@ export const HoldersIntelligencePanel: React.FC<HoldersIntelligencePanelProps> =
     <div className="space-y-5 text-xs">
       {/* Summary Cards: Holders, Snipers, Insiders, Bundles */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-        <div className="p-3 rounded border border-slate-800 bg-[#111622]">
+        <div className="p-3 rounded border border-[#1E2330] bg-[#0C0E14]">
           <div className="text-[11px] text-slate-400">Holder Concentration</div>
           <div className="font-mono text-lg font-bold text-slate-100 mt-0.5 tabular-nums">
             {holders.holder_count.toLocaleString()} holders
@@ -48,7 +48,7 @@ export const HoldersIntelligencePanel: React.FC<HoldersIntelligencePanelProps> =
           </div>
         </div>
 
-        <div className="p-3 rounded border border-slate-800 bg-[#111622]">
+        <div className="p-3 rounded border border-[#1E2330] bg-[#0C0E14]">
           <div className="text-[11px] text-slate-400">Sniper Analysis</div>
           <div className="font-mono text-lg font-bold text-amber-300 mt-0.5 tabular-nums">
             {holders.sniper_analysis.supply_pct}% supply
@@ -61,7 +61,7 @@ export const HoldersIntelligencePanel: React.FC<HoldersIntelligencePanelProps> =
           </div>
         </div>
 
-        <div className="p-3 rounded border border-slate-800 bg-[#111622]">
+        <div className="p-3 rounded border border-[#1E2330] bg-[#0C0E14]">
           <div className="text-[11px] text-slate-400">Insider Exposure</div>
           <div className="font-mono text-lg font-bold text-rose-400 mt-0.5 tabular-nums">
             {holders.insider_analysis.exposure_score}/100
@@ -74,7 +74,7 @@ export const HoldersIntelligencePanel: React.FC<HoldersIntelligencePanelProps> =
           </div>
         </div>
 
-        <div className="p-3 rounded border border-slate-800 bg-[#111622]">
+        <div className="p-3 rounded border border-[#1E2330] bg-[#0C0E14]">
           <div className="text-[11px] text-slate-400">Bundle Clusters</div>
           <div className="font-mono text-lg font-bold text-orange-400 mt-0.5 tabular-nums">
             {holders.bundle_analysis.combined_supply_pct}% supply
@@ -89,7 +89,7 @@ export const HoldersIntelligencePanel: React.FC<HoldersIntelligencePanelProps> =
       </div>
 
       {/* Interactive Holder Relationship Bubble Graph */}
-      <div className="p-3.5 rounded border border-slate-800 bg-[#111622] space-y-3">
+      <div className="p-3.5 rounded border border-[#1E2330] bg-[#0C0E14] space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="font-display text-sm font-semibold text-slate-100">
@@ -99,12 +99,12 @@ export const HoldersIntelligencePanel: React.FC<HoldersIntelligencePanelProps> =
               Bubbles sized by holdings / % supply · Click any wallet bubble or row below to inspect relationships
             </p>
           </div>
-          <div className="inline-flex items-center rounded border border-slate-800 bg-[#0B0E14] p-0.5">
+          <div className="inline-flex items-center rounded-sm border border-[#1E2330] bg-[#08090D] p-0.5">
             <button
               type="button"
               onClick={() => setGraphMode('2D')}
-              className={`px-2.5 py-1 text-[11px] font-mono rounded whitespace-nowrap shrink-0 transition-colors ${
-                graphMode === '2D' ? 'bg-sky-500/20 text-sky-300' : 'text-slate-400 hover:text-slate-200'
+              className={`px-2.5 py-1 text-[11px] font-mono rounded-sm whitespace-nowrap shrink-0 transition-colors ${
+                graphMode === '2D' ? 'bg-[#7C5CFF]/25 text-[#C4B5FD]' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               2D (Cytoscape)
@@ -112,8 +112,8 @@ export const HoldersIntelligencePanel: React.FC<HoldersIntelligencePanelProps> =
             <button
               type="button"
               onClick={() => setGraphMode('3D')}
-              className={`px-2.5 py-1 text-[11px] font-mono rounded whitespace-nowrap shrink-0 transition-colors ${
-                graphMode === '3D' ? 'bg-sky-500/20 text-sky-300' : 'text-slate-400 hover:text-slate-200'
+              className={`px-2.5 py-1 text-[11px] font-mono rounded-sm whitespace-nowrap shrink-0 transition-colors ${
+                graphMode === '3D' ? 'bg-[#7C5CFF]/25 text-[#C4B5FD]' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               3D (Three.js)
@@ -140,7 +140,7 @@ export const HoldersIntelligencePanel: React.FC<HoldersIntelligencePanelProps> =
 
       {/* Red-Flag Engine & Clusters */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <div className="p-3.5 rounded border border-slate-800 bg-[#111622] space-y-2">
+        <div className="p-3.5 rounded border border-[#1E2330] bg-[#0C0E14] space-y-2">
           <h3 className="font-display text-sm font-semibold text-slate-100">Distribution & Red-Flag Engine</h3>
           {holders.red_flags.length === 0 ? (
             <p className="text-slate-400 text-[11px]">No acute distribution red flags triggered at current thresholds.</p>
@@ -163,7 +163,7 @@ export const HoldersIntelligencePanel: React.FC<HoldersIntelligencePanelProps> =
           )}
         </div>
 
-        <div className="p-3.5 rounded border border-slate-800 bg-[#111622] space-y-2">
+        <div className="p-3.5 rounded border border-[#1E2330] bg-[#0C0E14] space-y-2">
           <h3 className="font-display text-sm font-semibold text-slate-100">Detected Bundle & Insider Clusters</h3>
           <div className="space-y-2">
             {holders.bundle_analysis.clusters.map((cl) => (
@@ -171,10 +171,10 @@ export const HoldersIntelligencePanel: React.FC<HoldersIntelligencePanelProps> =
                 key={cl.cluster_id}
                 type="button"
                 onClick={() => handleSelectCluster(cl.cluster_id)}
-                className="w-full text-left p-2 rounded border border-slate-800 bg-[#0B0E14] hover:border-sky-500/40 transition-colors text-[11px]"
+                className="w-full text-left p-2 rounded border border-slate-800 bg-[#08090D] hover:border-sky-500/40 transition-colors text-[11px]"
               >
                 <div className="flex items-center justify-between font-mono">
-                  <span className="text-sky-300 font-semibold">{cl.cluster_id}</span>
+                  <span className="text-[#C4B5FD] font-semibold">{cl.cluster_id}</span>
                   <span className="text-slate-200 tabular-nums">
                     {cl.wallet_count} wallets · {cl.combined_supply_pct}% · Conf {Math.round(cl.relationship_confidence * 100)}%
                   </span>
@@ -188,7 +188,7 @@ export const HoldersIntelligencePanel: React.FC<HoldersIntelligencePanelProps> =
       </div>
 
       {/* Classified Wallet Ledger */}
-      <div className="p-3.5 rounded border border-slate-800 bg-[#111622]">
+      <div className="p-3.5 rounded border border-[#1E2330] bg-[#0C0E14]">
         <div className="flex items-center justify-between mb-2">
           <h3 className="font-display text-sm font-semibold text-slate-100">Classified Wallet Intelligence</h3>
           <span className="font-mono text-[11px] text-slate-400">Source Status: {holders.data_status}</span>
@@ -214,11 +214,11 @@ export const HoldersIntelligencePanel: React.FC<HoldersIntelligencePanelProps> =
                     key={w.id}
                     onClick={() => handleSelectWalletById(w.id)}
                     className={`cursor-pointer transition-colors ${
-                      isActive ? 'bg-sky-500/15' : 'hover:bg-slate-800/30'
+                      isActive ? 'bg-[#7C5CFF]/15' : 'hover:bg-[#141824]'
                     }`}
                   >
                     <td className="py-1.5 pr-3 text-slate-200">{w.short_address}</td>
-                    <td className="py-1.5 pr-3 text-sky-300">{w.classification}</td>
+                    <td className="py-1.5 pr-3 text-[#C4B5FD]">{w.classification}</td>
                     <td className="py-1.5 pr-3 text-right text-slate-100">{w.supply_pct.toFixed(2)}%</td>
                     <td className="py-1.5 pr-3 text-right text-slate-300">${w.balance_usd.toLocaleString()}</td>
                     <td className="py-1.5 pr-3 text-slate-300">{w.behavior}</td>

@@ -3,6 +3,7 @@ export type WorkspaceTabId =
   | 'ANALYSIS'
   | 'HOLDERS'
   | 'TRADES'
+  | 'SOCIAL_TRACKER'
   | 'BUBBLE_2D'
   | 'BUBBLE_3D'
   | 'FORENSICS'
@@ -19,16 +20,17 @@ export interface WorkspaceTabMeta {
 }
 
 export const WORKSPACE_TABS_META: WorkspaceTabMeta[] = [
-  { id: 'GRAPH', label: 'Graph', description: 'Live candlestick chart & breakout zones' },
+  { id: 'GRAPH', label: 'Graph', description: 'Live candlestick chart, objects & breakout zones' },
   { id: 'ANALYSIS', label: 'Analysis', description: 'Unified risk, liquidity, regime & thesis summary' },
   { id: 'HOLDERS', label: 'Holders · Bubble Map', description: 'Snipers, bundles & interactive 2D/3D bubble map' },
-  { id: 'TRADES', label: 'Live Trades Tape', description: 'Real-time BUY/SELL orderflow tape' },
-  { id: 'BUBBLE_2D', label: '2D Bubble Map', description: 'Full-width Cytoscape wallet relationship graph' },
-  { id: 'BUBBLE_3D', label: '3D Bubble Map', description: 'Full-width Three.js 3D wallet topology' },
-  { id: 'FORENSICS', label: 'Forensics & Sources', description: 'Contract checks, lifecycle & provider integrity' },
-  { id: 'LIQUIDITY_VOLUME', label: 'Liquidity & Volume', description: 'LP depth, slippage & wash-volume detection' },
-  { id: 'SOCIAL_RISK', label: 'Social & Risk Engine', description: 'X/TG/Reddit/Twitch sentiment & rug gates' },
-  { id: 'CHECKLIST_PREDICTIONS', label: 'Checklist & Predictions', description: 'Automated rules, logged snapshots & overrides' },
+  { id: 'TRADES', label: 'Live Trades', description: 'Real-time BUY/SELL orderflow tape' },
+  { id: 'SOCIAL_TRACKER', label: 'Social Tracker', description: 'Live X, Telegram, Reddit & Twitch mention stream' },
+  { id: 'BUBBLE_2D', label: '2D Map', description: 'Full-width Cytoscape wallet relationship graph' },
+  { id: 'BUBBLE_3D', label: '3D Map', description: 'Full-width Three.js 3D wallet topology' },
+  { id: 'FORENSICS', label: 'Forensics', description: 'Contract checks, lifecycle & provider integrity' },
+  { id: 'LIQUIDITY_VOLUME', label: 'Liquidity & Vol', description: 'LP depth, slippage & wash-volume detection' },
+  { id: 'SOCIAL_RISK', label: 'Social & Risk', description: 'X/TG/Reddit/Twitch narrative & rug gates' },
+  { id: 'CHECKLIST_PREDICTIONS', label: 'Checklist & ML', description: 'Automated rules, logged snapshots & overrides' },
 ];
 
 export interface WorkspaceLayoutState {
@@ -59,6 +61,7 @@ export const LAYOUT_PRESETS: Record<Exclude<LayoutPresetId, 'CUSTOM'>, Workspace
     openTabs: [
       'HOLDERS',
       'TRADES',
+      'SOCIAL_TRACKER',
       'BUBBLE_2D',
       'BUBBLE_3D',
       'FORENSICS',
@@ -77,7 +80,7 @@ export const LAYOUT_PRESETS: Record<Exclude<LayoutPresetId, 'CUSTOM'>, Workspace
     leftWidth: 280,
     rightWidth: 300,
     chartHeight: 455,
-    openTabs: ['TRADES', 'GRAPH', 'HOLDERS', 'LIQUIDITY_VOLUME'],
+    openTabs: ['TRADES', 'SOCIAL_TRACKER', 'GRAPH', 'HOLDERS', 'LIQUIDITY_VOLUME'],
     activeTab: 'TRADES',
   },
   ANALYSIS_FOCUS: {
@@ -91,6 +94,7 @@ export const LAYOUT_PRESETS: Record<Exclude<LayoutPresetId, 'CUSTOM'>, Workspace
     chartHeight: 260,
     openTabs: [
       'ANALYSIS',
+      'SOCIAL_TRACKER',
       'GRAPH',
       'HOLDERS',
       'FORENSICS',

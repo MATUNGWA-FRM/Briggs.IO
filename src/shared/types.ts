@@ -4,7 +4,7 @@ export type BriggMode = 'SHITCOIN' | 'MEMECOIN';
 
 export type Horizon = '4M' | '15M' | '1H' | '4H' | '24H';
 
-export type ChartTimeframe = '1M' | '5M' | '15M' | '1H' | '4H' | '24H';
+export type ChartTimeframe = '1S' | '1M' | '5M' | '15M' | '1H' | '4H' | '24H';
 
 export type DataStatus =
   | 'REAL'
@@ -826,6 +826,20 @@ export interface LiveTradeEvent {
   source: 'LIVE_DEXSCREENER' | 'ESTIMATED_INTRABAR' | 'MOCK';
 }
 
+export interface SocialMentionEvent {
+  id: string;
+  platform: ApprovedSocialProvider;
+  author: string;
+  channel: string;
+  text: string;
+  sentiment: 'BULLISH' | 'NEUTRAL' | 'BEARISH';
+  engagement: number;
+  organicity: 'ORGANIC' | 'AUTOMATED_RISK';
+  url?: string;
+  timestamp_ms: number;
+  data_status: DataStatus;
+}
+
 export interface LiveMarketTick {
   address: string;
   symbol: string;
@@ -844,5 +858,6 @@ export interface LiveMarketTick {
   data_status: DataStatus;
   tick_source: 'LIVE_DEXSCREENER' | 'ESTIMATED_INTRABAR' | 'MOCK';
   trade?: LiveTradeEvent;
+  social_event?: SocialMentionEvent;
 }
 

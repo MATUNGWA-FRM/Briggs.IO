@@ -403,30 +403,53 @@ export async function searchDexScreenerTokens(query: string): Promise<Normalized
   return [];
 }
 
-export async function fetchDexScreenerScannerUniverse(): Promise<NormalizedMarketPayload[]> {
+export async function fetchDexScreenerScannerUniverse(forceRefresh = false): Promise<NormalizedMarketPayload[]> {
   const cached = searchCache.get('__universe__');
-  if (cached && cached.expiresAt > Date.now()) {
+  if (!forceRefresh && cached && cached.expiresAt > Date.now()) {
     return cached.tokens;
   }
 
-  const boostMap = new Map<string, number>();
-  const boostRes = await fetchJsonWithRetry<DexScreenerBoostItem[]>(
-    'dexscreener',
-    `${SERVER_CONFIG.providers.dexscreener.baseUrl}/token-boosts/top/v1`
-  );
+  if (forceRefresh) {
+    searchCache.delete('__universe__');
+  }
 
-  const candidateAddresses = new Set<string>(SOLANA_DISCOVERY_SEEDS);
+  const boostMap = new Map<string, number>();
+  const [latestProfilesRes, boostRes] = await Promise.all([
+    fetchJsonWithRetry<DexScreenerBoostItem[]>(
+      'dexscreener',
+      `${SERVER_CONFIG.providers.dexscreener.baseUrl}/token-profiles/latest/v1`
+    ),
+    fetchJsonWithRetry<DexScreenerBoostItem[]>(
+      'dexscreener',
+      `${SERVER_CONFIG.providers.dexscreener.baseUrl}/token-boosts/top/v1`
+    ),
+  ]);
+
+  const candidateAddresses = new Set<string>();
+  // Prioritize newly profiled Solana launches first when available
+  if (Array.isArray(latestProfilesRes.data)) {
+    for (const item of latestProfilesRes.data) {
+      if (item.chainId === 'solana' && item.tokenAddress) {
+        candidateAddresses.add(item.tokenAddress);
+        if (candidateAddresses.size >= 6) break;
+      }
+    }
+  }
   if (Array.isArray(boostRes.data)) {
     for (const item of boostRes.data) {
       if (item.chainId === 'solana' && item.tokenAddress) {
         candidateAddresses.add(item.tokenAddress);
         boostMap.set(item.tokenAddress, Number(item.totalAmount || item.amount || 10));
-        if (candidateAddresses.size >= 16) break;
+        if (candidateAddresses.size >= 12) break;
       }
     }
   }
+  for (const seed of SOLANA_DISCOVERY_SEEDS) {
+    candidateAddresses.add(seed);
+    if (candidateAddresses.size >= 18) break;
+  }
 
-  const addrList = Array.from(candidateAddresses).slice(0, 16);
+  const addrList = Array.from(candidateAddresses).slice(0, 18);
   // DexScreener supports comma-separated token addresses (up to 30)
   const batchUrl = `${SERVER_CONFIG.providers.dexscreener.baseUrl}/latest/dex/tokens/${addrList.join(',')}`;
   const batchRes = await fetchJsonWithRetry<DexScreenerTokensResponse>('dexscreener', batchUrl);
@@ -445,7 +468,12 @@ export async function fetchDexScreenerScannerUniverse(): Promise<NormalizedMarke
       const pairs = grouped.get(addr);
       if (pairs && pairs.length > 0) {
         const mapped = mapPairsToNormalized(addr, pairs, boostMap.get(addr) || 0);
-        if (mapped) results.push(mapped);
+        if (mapped) {
+          results.push(mapped);
+          if (forceRefresh) {
+            cache.set(addr, { expiresAt: Date.now() + SERVER_CONFIG.cacheTtlMs, payload: mapped });
+          }
+        }
       }
     }
   }

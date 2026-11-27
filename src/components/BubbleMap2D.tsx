@@ -270,14 +270,14 @@ export const BubbleMap2D: React.FC<BubbleMap2DProps> = ({
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search wallet or cluster..."
-              className="bg-[#111622] border border-slate-800 rounded pl-7 pr-2 py-1 text-xs text-slate-200 font-mono w-44 focus:outline-none focus:border-sky-500"
+              className="bg-[#0C0E14] border border-[#1E2330] rounded pl-7 pr-2 py-1 text-xs text-slate-200 font-mono w-44 focus:outline-none focus:border-sky-500"
             />
           </div>
 
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
-            className="bg-[#111622] border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+            className="bg-[#0C0E14] border border-[#1E2330] rounded px-2 py-1 text-xs text-slate-200"
             aria-label="Filter by wallet classification"
           >
             {ALL_ROLES.map((r) => (
@@ -290,7 +290,7 @@ export const BubbleMap2D: React.FC<BubbleMap2DProps> = ({
           <select
             value={relationshipFilter}
             onChange={(e) => setRelationshipFilter(e.target.value as 'ALL' | WalletEdge['relationship'])}
-            className="bg-[#111622] border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+            className="bg-[#0C0E14] border border-[#1E2330] rounded px-2 py-1 text-xs text-slate-200"
             aria-label="Filter by relationship type"
           >
             {RELATIONSHIP_FILTERS.map((rel) => (
@@ -303,7 +303,7 @@ export const BubbleMap2D: React.FC<BubbleMap2DProps> = ({
           <select
             value={expandedCluster || ''}
             onChange={(e) => setExpandedCluster(e.target.value || null)}
-            className="bg-[#111622] border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 font-mono"
+            className="bg-[#0C0E14] border border-[#1E2330] rounded px-2 py-1 text-xs text-slate-200 font-mono"
             aria-label="Expand wallet cluster"
           >
             <option value="">All Clusters ({graph.clusters.length})</option>
@@ -317,7 +317,7 @@ export const BubbleMap2D: React.FC<BubbleMap2DProps> = ({
           <select
             value={sizeMetric}
             onChange={(e) => setSizeMetric(e.target.value as 'supply' | 'usd')}
-            className="bg-[#111622] border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+            className="bg-[#0C0E14] border border-[#1E2330] rounded px-2 py-1 text-xs text-slate-200"
             aria-label="Bubble size metric"
           >
             <option value="supply">Size: Supply %</option>
@@ -329,7 +329,7 @@ export const BubbleMap2D: React.FC<BubbleMap2DProps> = ({
           <button
             type="button"
             onClick={() => setLayoutMode((m) => (m === 'preset' ? 'cose' : 'preset'))}
-            className="px-2.5 py-1 text-xs border border-slate-800 bg-[#111622] hover:bg-slate-800 text-slate-300 rounded whitespace-nowrap shrink-0"
+            className="px-2.5 py-1 text-xs border border-[#1E2330] bg-[#0C0E14] hover:bg-slate-800 text-slate-300 rounded whitespace-nowrap shrink-0"
           >
             {layoutMode === 'preset' ? 'Cluster Map' : 'Force Layout'}
           </button>
@@ -337,7 +337,7 @@ export const BubbleMap2D: React.FC<BubbleMap2DProps> = ({
           <button
             type="button"
             onClick={() => setShowEdges((v) => !v)}
-            className="px-2.5 py-1 text-xs border border-slate-800 bg-[#111622] hover:bg-slate-800 text-slate-300 rounded inline-flex items-center gap-1 whitespace-nowrap shrink-0"
+            className="px-2.5 py-1 text-xs border border-[#1E2330] bg-[#0C0E14] hover:bg-slate-800 text-slate-300 rounded inline-flex items-center gap-1 whitespace-nowrap shrink-0"
           >
             {showEdges ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
             {showEdges ? 'Hide Links' : 'Show Links'}
@@ -346,7 +346,7 @@ export const BubbleMap2D: React.FC<BubbleMap2DProps> = ({
           <button
             type="button"
             onClick={() => handleZoom(1.25)}
-            className="p-1.5 border border-slate-800 bg-[#111622] hover:bg-slate-800 text-slate-300 rounded shrink-0"
+            className="p-1.5 border border-[#1E2330] bg-[#0C0E14] hover:bg-slate-800 text-slate-300 rounded shrink-0"
             title="Zoom in"
             aria-label="Zoom in"
           >
@@ -356,7 +356,7 @@ export const BubbleMap2D: React.FC<BubbleMap2DProps> = ({
           <button
             type="button"
             onClick={() => handleZoom(0.8)}
-            className="p-1.5 border border-slate-800 bg-[#111622] hover:bg-slate-800 text-slate-300 rounded shrink-0"
+            className="p-1.5 border border-[#1E2330] bg-[#0C0E14] hover:bg-slate-800 text-slate-300 rounded shrink-0"
             title="Zoom out"
             aria-label="Zoom out"
           >
@@ -366,7 +366,7 @@ export const BubbleMap2D: React.FC<BubbleMap2DProps> = ({
           <button
             type="button"
             onClick={() => cyRef.current?.fit(undefined, 28)}
-            className="px-2.5 py-1 text-xs border border-slate-800 bg-[#111622] hover:bg-slate-800 text-slate-300 rounded inline-flex items-center gap-1 whitespace-nowrap shrink-0"
+            className="px-2.5 py-1 text-xs border border-[#1E2330] bg-[#0C0E14] hover:bg-slate-800 text-slate-300 rounded inline-flex items-center gap-1 whitespace-nowrap shrink-0"
           >
             <LocateFixed className="w-3.5 h-3.5" />
             Fit
@@ -386,7 +386,7 @@ export const BubbleMap2D: React.FC<BubbleMap2DProps> = ({
       </div>
 
       {/* Cytoscape 2D Viewport */}
-      <div className={`relative ${heightClassName} w-full rounded border border-slate-800 bg-[#0B0E14] overflow-hidden`}>
+      <div className={`relative ${heightClassName} w-full rounded border border-[#1E2330] bg-[#08090D] overflow-hidden`}>
         <div ref={containerRef} className="w-full h-full" />
         {filteredNodes.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400 pointer-events-none">

@@ -4,6 +4,8 @@ import { seededUnit } from '../connectors/base.ts';
 
 export function tfToSeconds(tf: ChartTimeframe): number {
   switch (tf) {
+    case '1S':
+      return 1;
     case '1M':
       return 60;
     case '5M':
@@ -58,7 +60,9 @@ export function buildChartIntelligence(
   const latestBucket = Math.floor(nowSec / stepSec) * stepSec;
   const currentPrice = Math.max(1e-9, m.price_usd || 0.001);
   const anchorChangePct =
-    timeframe === '1M' || timeframe === '5M'
+    timeframe === '1S'
+      ? m.price_change_5m * 0.35
+      : timeframe === '1M' || timeframe === '5M'
       ? m.price_change_5m
       : timeframe === '15M' || timeframe === '1H'
       ? m.price_change_1h
@@ -72,8 +76,14 @@ export function buildChartIntelligence(
   const rawCandles: CandlePoint[] = [];
 
   let p = startPrice;
-  const volBase = Math.max(100, (m.volume_24h_usd || 50_000) / 90);
-  const volatilityFactor = Math.min(0.11, Math.max(0.012, Math.abs(anchorChangePct) / 450 + 0.018));
+  const volBase =
+    timeframe === '1S'
+      ? Math.max(30, (m.volume_5m_usd || 4_500) / 300)
+      : Math.max(100, (m.volume_24h_usd || 50_000) / 90);
+  const volatilityFactor =
+    timeframe === '1S'
+      ? Math.min(0.025, Math.max(0.003, Math.abs(anchorChangePct) / 900 + 0.0045))
+      : Math.min(0.11, Math.max(0.012, Math.abs(anchorChangePct) / 450 + 0.018));
 
   for (let i = 0; i < count; i++) {
     const progress = (i + 1) / count;

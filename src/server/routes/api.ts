@@ -18,6 +18,7 @@ import { analyzeLiquidity } from '../analytics/liquidity.ts';
 import { detectMarketRegime } from '../analytics/marketRegime.ts';
 import { evaluateRiskEngine } from '../analytics/riskEngine.ts';
 import { analyzeSocialAndNarrative } from '../analytics/social.ts';
+import { buildInitialSocialFeed, generateStreamingSocialEvent } from '../analytics/socialTracker.ts';
 import { analyzeVolume } from '../analytics/volume.ts';
 import { INITIAL_FILTER_PRESETS, SERVER_CONFIG } from '../config.ts';
 import { aggregateTokenSources } from '../connectors/aggregator.ts';
@@ -251,16 +252,17 @@ export function createApiRouter(): Router {
       return;
     }
 
-    const { mode, horizon, preset, sortBy, q, minLiquidity, maxRisk, minOpportunity, hideNewPairs, migratedOnly } =
+    const { mode, horizon, preset, sortBy, q, minLiquidity, maxRisk, minOpportunity, hideNewPairs, migratedOnly, refresh } =
       parsed.data;
+    const forceRefresh = refresh === 'true';
 
     try {
       let universe = q && q.trim().length > 1
         ? await searchDexScreenerTokens(sanitizeTextInput(q, 48))
-        : await fetchDexScreenerScannerUniverse();
+        : await fetchDexScreenerScannerUniverse(forceRefresh);
 
       if (universe.length === 0 && q) {
-        universe = await fetchDexScreenerScannerUniverse();
+        universe = await fetchDexScreenerScannerUniverse(forceRefresh);
       }
 
       const presetObj: BriggFilterPreset =
@@ -390,6 +392,32 @@ export function createApiRouter(): Router {
     }
   });
 
+  router.get('/social/:address', async (req, res) => {
+    const paramParsed = TokenAddressParamSchema.safeParse(req.params);
+    if (!paramParsed.success) {
+      res.status(400).json({ error: paramParsed.error.issues[0]?.message || 'Invalid token address' });
+      return;
+    }
+
+    try {
+      const agg = await aggregateTokenSources(paramParsed.data.address);
+      const events = await buildInitialSocialFeed({
+        address: agg.primaryMarket.address,
+        symbol: agg.primaryMarket.symbol,
+        priceChange1h: agg.primaryMarket.price_change_1h,
+        hasXLink: Boolean(agg.primaryMarket.socials.x),
+        hasTelegramLink: Boolean(agg.primaryMarket.socials.telegram),
+      });
+      res.json({
+        address: agg.primaryMarket.address,
+        symbol: agg.primaryMarket.symbol,
+        events,
+      });
+    } catch (err) {
+      res.status(500).json({ error: 'Social feed error', detail: String(err) });
+    }
+  });
+
   router.get('/stream/:address', async (req, res) => {
     const paramParsed = TokenAddressParamSchema.safeParse(req.params);
     if (!paramParsed.success) {
@@ -398,11 +426,12 @@ export function createApiRouter(): Router {
     }
 
     const rawTf = String(req.query.timeframe || '15M').toUpperCase();
-    const validTfs: ChartTimeframe[] = ['1M', '5M', '15M', '1H', '4H', '24H'];
+    const validTfs: ChartTimeframe[] = ['1S', '1M', '5M', '15M', '1H', '4H', '24H'];
     const timeframe: ChartTimeframe = validTfs.includes(rawTf as ChartTimeframe)
       ? (rawTf as ChartTimeframe)
       : '15M';
     const stepSec = tfToSeconds(timeframe);
+    const intervalMs = timeframe === '1S' ? 1000 : 1500;
     const address = paramParsed.data.address;
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -452,6 +481,17 @@ export function createApiRouter(): Router {
         const tradeAmountUsd = Math.round(avgTradeSize * (0.25 + Math.random() * 1.65));
         const barVolumeDelta = Math.max(25, Math.round(tradeAmountUsd * 0.85));
 
+        const emitSocial = tickCount === 0 || tickCount % 3 === 0;
+        const socialEvent = emitSocial
+          ? generateStreamingSocialEvent({
+              address,
+              symbol: quote.symbol,
+              priceUsd: workingPrice,
+              priceChange1h: quote.price_change_1h,
+              tickCount,
+            })
+          : undefined;
+
         const payload: LiveMarketTick = {
           address,
           symbol: quote.symbol,
@@ -478,6 +518,7 @@ export function createApiRouter(): Router {
             maker_short: makers[tickCount % makers.length],
             source: tickSource,
           },
+          social_event: socialEvent,
         };
 
         tickCount += 1;
@@ -490,7 +531,7 @@ export function createApiRouter(): Router {
     void sendTick();
     const timer = setInterval(() => {
       void sendTick();
-    }, 1500);
+    }, intervalMs);
 
     req.on('close', () => {
       closed = true;

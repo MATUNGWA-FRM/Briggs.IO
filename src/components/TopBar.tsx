@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Bell, BrainCircuit, Search, Settings, ShieldAlert } from 'lucide-react';
-import type { LayoutPresetId, WorkspaceLayoutState, WorkspaceTabId } from '../shared/layoutConfig';
 import type { BriggMode, Horizon } from '../shared/types';
-import { LayoutCustomizer } from './LayoutCustomizer';
 
 interface TopBarProps {
   mode: BriggMode;
@@ -13,15 +11,11 @@ interface TopBarProps {
   onViewChange: (v: 'TERMINAL' | 'MODEL_CENTER') => void;
   onTokenSearch: (queryOrAddress: string) => void;
   unreadAlertsCount: number;
+  activeBuyBarCount: number;
   onOpenAlerts: () => void;
   onOpenSettings: () => void;
   dataStatus: string;
   streaming: boolean;
-  layout: WorkspaceLayoutState;
-  onApplyPreset: (preset: Exclude<LayoutPresetId, 'CUSTOM'>) => void;
-  onTogglePanel: (panel: 'showScanner' | 'showChart' | 'showLowerPanel' | 'showScorePanel') => void;
-  onToggleTab: (tabId: WorkspaceTabId) => void;
-  onResetLayout: () => void;
 }
 
 const HORIZONS: Horizon[] = ['4M', '15M', '1H', '4H', '24H'];
@@ -35,15 +29,11 @@ export const TopBar: React.FC<TopBarProps> = ({
   onViewChange,
   onTokenSearch,
   unreadAlertsCount,
+  activeBuyBarCount,
   onOpenAlerts,
   onOpenSettings,
   dataStatus,
   streaming,
-  layout,
-  onApplyPreset,
-  onTogglePanel,
-  onToggleTab,
-  onResetLayout,
 }) => {
   const [searchInput, setSearchInput] = useState('');
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -65,6 +55,8 @@ export const TopBar: React.FC<TopBarProps> = ({
       onTokenSearch(searchInput.trim());
     }
   };
+
+  const totalNotificationCount = unreadAlertsCount + activeBuyBarCount;
 
   return (
     <header className="h-12 border-b border-[#1E2330] bg-[#0C0E14] px-3 flex items-center justify-between gap-3 shrink-0">
@@ -180,7 +172,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         </div>
       </div>
 
-      {/* Right Actions */}
+      {/* Compact Right Actions (Layout & Notification Controls moved into Settings Bar to save space) */}
       <div className="flex items-center gap-1.5 shrink-0">
         <span
           className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-mono text-slate-300 px-2 py-1 border border-[#1E2330] rounded-sm bg-[#07080C] whitespace-nowrap"
@@ -194,26 +186,19 @@ export const TopBar: React.FC<TopBarProps> = ({
           <span>{dataStatus}</span>
         </span>
 
-        {activeView === 'TERMINAL' && (
-          <LayoutCustomizer
-            layout={layout}
-            onApplyPreset={onApplyPreset}
-            onTogglePanel={onTogglePanel}
-            onToggleTab={onToggleTab}
-            onResetLayout={onResetLayout}
-          />
-        )}
-
         <button
           type="button"
           onClick={onOpenAlerts}
           className="relative px-2 py-1 text-xs font-medium text-slate-300 hover:text-white bg-[#12151E] border border-[#1E2330] hover:border-[#2C3448] rounded-sm flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
-          aria-label="Open Alerts"
+          aria-label="Open Notification Bar and Alerts"
+          title="Notification Bar (2m) & Alerts"
         >
-          <Bell className="w-3.5 h-3.5" />
+          <Bell className={`w-3.5 h-3.5 ${activeBuyBarCount > 0 ? 'text-[#00E599]' : ''}`} />
           <span className="hidden md:inline">Alerts</span>
-          {unreadAlertsCount > 0 && (
-            <span className="font-mono text-[11px] text-amber-400 tabular-nums">({unreadAlertsCount})</span>
+          {totalNotificationCount > 0 && (
+            <span className="font-mono text-[11px] text-[#00E599] tabular-nums">
+              ({totalNotificationCount})
+            </span>
           )}
         </button>
 
@@ -221,9 +206,11 @@ export const TopBar: React.FC<TopBarProps> = ({
           type="button"
           onClick={onOpenSettings}
           className="px-2 py-1 text-xs font-medium text-slate-300 hover:text-white bg-[#12151E] border border-[#1E2330] hover:border-[#2C3448] rounded-sm flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
-          aria-label="Settings and Knowledge Layer"
+          aria-label="Open Settings Bar (Layout, Notifications, Telemetry)"
+          title="Settings Bar: Layout, Notifications & System"
         >
-          <Settings className="w-3.5 h-3.5" />
+          <Settings className="w-3.5 h-3.5 text-[#9D7BFF]" />
+          <span className="hidden lg:inline">Settings</span>
         </button>
       </div>
     </header>

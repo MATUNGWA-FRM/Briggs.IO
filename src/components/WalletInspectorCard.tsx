@@ -26,7 +26,7 @@ export const BubbleLegend: React.FC<BubbleLegendProps> = ({
       : (Object.keys(WALLET_CLASSIFICATION_COLORS) as Array<keyof typeof WALLET_CLASSIFICATION_COLORS>);
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 px-3 py-2 rounded border border-slate-800/90 bg-[#0E131D] text-[11px]">
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 px-3 py-2 rounded border border-[#1E2330] bg-[#08090D] text-[11px]">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="text-slate-400 font-medium">Wallet Roles:</span>
         {rolesToDisplay.map((role) => {
@@ -38,7 +38,7 @@ export const BubbleLegend: React.FC<BubbleLegendProps> = ({
               type="button"
               onClick={() => onSelectRole?.(isSelected ? 'ALL' : role)}
               className={`inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors ${
-                isSelected ? 'text-sky-300 font-semibold underline underline-offset-4' : 'text-slate-300 hover:text-white'
+                isSelected ? 'text-[#C4B5FD] font-semibold underline underline-offset-4' : 'text-slate-300 hover:text-white'
               }`}
               title={`Filter by ${role}`}
             >
@@ -89,7 +89,7 @@ export const WalletInspectorCard: React.FC<WalletInspectorCardProps> = ({
     const srcNode = graph.nodes.find((n) => n.id === selectedEdge.source);
     const tgtNode = graph.nodes.find((n) => n.id === selectedEdge.target);
     return (
-      <div className="p-3 rounded border border-slate-800 bg-[#111622] text-xs space-y-2">
+      <div className="p-3 rounded border border-[#1E2330] bg-[#0C0E14] text-xs space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 font-mono">
             <span
@@ -117,7 +117,7 @@ export const WalletInspectorCard: React.FC<WalletInspectorCardProps> = ({
             <button
               type="button"
               onClick={() => onSelectWallet(srcNode)}
-              className="text-sky-300 hover:underline"
+              className="text-[#C4B5FD] hover:underline"
             >
               {srcNode.classification} ({srcNode.short_address})
             </button>
@@ -127,7 +127,7 @@ export const WalletInspectorCard: React.FC<WalletInspectorCardProps> = ({
             <button
               type="button"
               onClick={() => onSelectWallet(tgtNode)}
-              className="text-sky-300 hover:underline"
+              className="text-[#C4B5FD] hover:underline"
             >
               {tgtNode.classification} ({tgtNode.short_address})
             </button>
@@ -152,7 +152,7 @@ export const WalletInspectorCard: React.FC<WalletInspectorCardProps> = ({
   };
 
   return (
-    <div className="p-3.5 rounded border border-slate-800 bg-[#111622] text-xs space-y-3">
+    <div className="p-3.5 rounded border border-[#1E2330] bg-[#0C0E14] text-xs space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800/80">
         <div className="flex items-center gap-2 min-w-0">
           <span
@@ -169,7 +169,7 @@ export const WalletInspectorCard: React.FC<WalletInspectorCardProps> = ({
           <button
             type="button"
             onClick={handleCopy}
-            className="text-slate-400 hover:text-sky-300 p-0.5 shrink-0"
+            className="text-slate-400 hover:text-[#C4B5FD] p-0.5 shrink-0"
             title="Copy wallet address"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -252,7 +252,7 @@ export const WalletInspectorCard: React.FC<WalletInspectorCardProps> = ({
                   key={edge.id}
                   type="button"
                   onClick={() => otherNode && onSelectWallet(otherNode)}
-                  className="text-left px-2.5 py-1.5 rounded border border-slate-800 bg-[#0B0E14] hover:border-sky-500/40 transition-colors flex items-center justify-between gap-2"
+                  className="text-left px-2.5 py-1.5 rounded border border-[#1E2330] bg-[#08090D] hover:border-sky-500/40 transition-colors flex items-center justify-between gap-2"
                 >
                   <div className="min-w-0">
                     <div className="font-mono text-[11px] text-slate-200 flex items-center gap-1.5">
@@ -263,7 +263,7 @@ export const WalletInspectorCard: React.FC<WalletInspectorCardProps> = ({
                       <span className="uppercase">{edge.relationship}</span>
                       <span className="text-slate-500">({direction})</span>
                       {otherNode && (
-                        <span className="text-sky-300 truncate">
+                        <span className="text-[#C4B5FD] truncate">
                           {otherNode.classification} {otherNode.short_address}
                         </span>
                       )}

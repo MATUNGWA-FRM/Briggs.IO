@@ -12,6 +12,10 @@ interface TokenScannerProps {
   onSortChange: (s: string) => void;
   loading: boolean;
   onRefresh: () => void;
+  autoRefreshSec: 0 | 15 | 30 | 60;
+  onAutoRefreshChange: (sec: 0 | 15 | 30 | 60) => void;
+  countdownSec: number;
+  newAddresses?: Set<string>;
   regime?: MarketRegimeState;
   widthPx?: number;
   onCollapse?: () => void;
@@ -63,6 +67,10 @@ export const TokenScanner: React.FC<TokenScannerProps> = ({
   onSortChange,
   loading,
   onRefresh,
+  autoRefreshSec,
+  onAutoRefreshChange,
+  countdownSec,
+  newAddresses,
   regime,
   widthPx,
   onCollapse,
@@ -99,15 +107,7 @@ export const TokenScanner: React.FC<TokenScannerProps> = ({
               <option value="holder_growth">Holders</option>
               <option value="age">Youngest</option>
             </select>
-            <button
-              type="button"
-              onClick={onRefresh}
-              disabled={loading}
-              className="p-1.5 rounded-sm border border-[#1E2330] bg-[#07080C] hover:bg-[#171B26] text-slate-300 transition-colors disabled:opacity-50"
-              title="Refresh scanner universe"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            </button>
+
             {onCollapse && (
               <button
                 type="button"
@@ -120,6 +120,40 @@ export const TokenScanner: React.FC<TokenScannerProps> = ({
               </button>
             )}
           </div>
+        </div>
+
+        {/* Auto-Refresh & Manual New-Token Reload Row */}
+        <div className="flex items-center justify-between gap-1.5 text-[10px] font-mono tabular-nums">
+          <div className="flex items-center gap-1 text-slate-400">
+            <span>Auto:</span>
+            <select
+              value={autoRefreshSec}
+              onChange={(e) => onAutoRefreshChange(Number(e.target.value) as 0 | 15 | 30 | 60)}
+              className="bg-[#07080C] border border-[#1E2330] rounded-sm px-1.5 py-0.5 text-[10px] font-mono text-slate-200 focus:outline-none focus:border-[#7C5CFF]"
+              aria-label="Scanner auto-refresh interval"
+            >
+              <option value={0}>Off</option>
+              <option value={15}>15s</option>
+              <option value={30}>30s</option>
+              <option value={60}>60s</option>
+            </select>
+            {autoRefreshSec > 0 && (
+              <span className="text-[#C4B5FD] ml-0.5" title="Seconds until next automatic reload">
+                {countdownSec}s
+              </span>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={loading}
+            className="px-2 py-0.5 rounded-sm border border-[#1E2330] bg-[#12151E] hover:border-[#7C5CFF]/60 text-slate-200 inline-flex items-center gap-1 transition-colors disabled:opacity-50 whitespace-nowrap shrink-0"
+            title="Manually reload new & trending Solana pairs"
+          >
+            <RefreshCw className={`w-3 h-3 text-[#00E599] ${loading ? 'animate-spin' : ''}`} />
+            <span>{loading ? 'Reloading' : 'Reload New'}</span>
+          </button>
         </div>
 
         {/* Preset Strip */}
@@ -152,6 +186,7 @@ export const TokenScanner: React.FC<TokenScannerProps> = ({
         ) : (
           tokens.map((t) => {
             const isSelected = t.address === selectedAddress;
+            const isNew = Boolean(newAddresses?.has(t.address));
             const actionColor =
               t.action_state === 'NO-TRADE'
                 ? 'text-[#FF4D6A]'
@@ -184,6 +219,11 @@ export const TokenScanner: React.FC<TokenScannerProps> = ({
                         <span className="font-display font-semibold text-xs text-slate-100 truncate">
                           {t.symbol}
                         </span>
+                        {isNew && (
+                          <span className="text-[9px] font-mono font-bold text-[#00E599] shrink-0">
+                            NEW
+                          </span>
+                        )}
                         <span className="text-[10px] font-mono text-slate-400 shrink-0">
                           {formatAge(t.age_minutes)} · {t.data_status}
                         </span>

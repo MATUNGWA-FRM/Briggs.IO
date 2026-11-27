@@ -444,7 +444,7 @@ export const BubbleMap3D: React.FC<BubbleMap3DProps> = ({
 
   return (
     <div className="space-y-2.5">
-      <div className={`relative ${heightClassName} w-full rounded border border-slate-800 bg-[#0B0E14] overflow-hidden`}>
+      <div className={`relative ${heightClassName} w-full rounded border border-[#1E2330] bg-[#08090D] overflow-hidden`}>
         {/* Isolated Three.js Mount Container */}
         <div ref={mountRef} className="w-full h-full" />
 
@@ -461,7 +461,7 @@ export const BubbleMap3D: React.FC<BubbleMap3DProps> = ({
 
         {/* Hover Tooltip (Solid Surface, No backdrop-blur over WebGL) */}
         {hoveredInfo && (
-          <div className="absolute top-2.5 right-3 px-3 py-2 rounded bg-[#111622] border border-slate-700 text-xs font-mono pointer-events-none">
+          <div className="absolute top-2.5 right-3 px-3 py-2 rounded bg-[#0C0E14] border border-[#1E2330] text-xs font-mono pointer-events-none">
             <div className="text-slate-100 font-semibold">{hoveredInfo.classification}</div>
             <div className="text-slate-400 text-[11px]">{hoveredInfo.short_address}</div>
             <div className="text-sky-300 text-[11px] tabular-nums">
@@ -482,7 +482,7 @@ export const BubbleMap3D: React.FC<BubbleMap3DProps> = ({
           </button>
 
           {!dockCollapsed && (
-            <div className="px-3 py-1.5 rounded bg-[#111622] border border-slate-700 flex flex-wrap items-center justify-center gap-2 text-xs">
+            <div className="px-3 py-1.5 rounded bg-[#0C0E14] border border-[#1E2330] flex flex-wrap items-center justify-center gap-2 text-xs">
               <div className="relative">
                 <Search className="w-3 h-3 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
@@ -547,7 +547,7 @@ export const BubbleMap3D: React.FC<BubbleMap3DProps> = ({
               <button
                 type="button"
                 onClick={() => setShowEdges((v) => !v)}
-                className="px-2 py-1 text-[11px] border border-slate-800 bg-[#0B0E14] hover:bg-slate-800 text-slate-300 rounded inline-flex items-center gap-1 whitespace-nowrap shrink-0"
+                className="px-2 py-1 text-[11px] border border-[#1E2330] bg-[#08090D] hover:bg-slate-800 text-slate-300 rounded inline-flex items-center gap-1 whitespace-nowrap shrink-0"
               >
                 {showEdges ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
                 Links
@@ -556,7 +556,7 @@ export const BubbleMap3D: React.FC<BubbleMap3DProps> = ({
               <button
                 type="button"
                 onClick={handleResetView}
-                className="px-2 py-1 text-[11px] border border-slate-800 bg-[#0B0E14] hover:bg-slate-800 text-slate-300 rounded inline-flex items-center gap-1 whitespace-nowrap shrink-0"
+                className="px-2 py-1 text-[11px] border border-[#1E2330] bg-[#08090D] hover:bg-slate-800 text-slate-300 rounded inline-flex items-center gap-1 whitespace-nowrap shrink-0"
               >
                 <RotateCcw className="w-3 h-3" />
                 Reset
