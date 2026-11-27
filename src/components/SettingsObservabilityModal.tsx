@@ -1,13 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Bell, BookOpen, LayoutTemplate, Server, SlidersHorizontal, X } from 'lucide-react';
+import { Bell, BookOpen, LayoutTemplate, Palette, RotateCcw, Server, SlidersHorizontal, X } from 'lucide-react';
 import type { LayoutPresetId, WorkspaceLayoutState, WorkspaceTabId } from '../shared/layoutConfig';
 import type { NotificationPrefs } from '../shared/notificationConfig';
 import { BRIGG_TERMINOLOGY } from '../shared/terminology';
+import {
+  DEFAULT_TERMINAL_COLORS,
+  isDefaultThemeColors,
+  type TerminalThemeColors,
+} from '../shared/themeConfig';
 import type { BriggFilterPreset, SystemObservability } from '../shared/types';
 import { LayoutSettingsPanel } from './LayoutCustomizer';
 import { NotificationSettingsControls } from './NotificationSettingsControls';
 
-type SettingsTabId = 'LAYOUT' | 'NOTIFICATIONS' | 'OBSERVABILITY' | 'FILTERS' | 'GLOSSARY';
+type SettingsTabId = 'LAYOUT' | 'COLORS' | 'NOTIFICATIONS' | 'OBSERVABILITY' | 'FILTERS' | 'GLOSSARY';
 
 interface SettingsObservabilityModalProps {
   open: boolean;
@@ -17,11 +22,23 @@ interface SettingsObservabilityModalProps {
   onTogglePanel: (panel: 'showScanner' | 'showChart' | 'showLowerPanel' | 'showScorePanel') => void;
   onToggleTab: (tabId: WorkspaceTabId) => void;
   onResetLayout: () => void;
+  themeColors: TerminalThemeColors;
+  onChangeThemeColors: (next: TerminalThemeColors) => void;
+  onResetDefaultColors: () => void;
   notificationPrefs: NotificationPrefs;
   onChangeNotificationPrefs: (next: NotificationPrefs) => void;
   activeBuyBarCount: number;
   onClearAllBuyNotifications: () => void;
 }
+
+const COLOR_FIELDS: Array<{ key: keyof TerminalThemeColors; label: string; hint: string }> = [
+  { key: 'bgCanvas', label: 'Canvas Background', hint: 'Main terminal backdrop (#07080C)' },
+  { key: 'bgSurface', label: 'Panel Surface', hint: 'Cards, sidebars & headers (#0C0E14)' },
+  { key: 'borderColor', label: 'Grid & Borders', hint: 'Dividers & pane borders (#1E2330)' },
+  { key: 'accentColor', label: 'Primary Accent', hint: 'Active tabs & highlights (#7C5CFF)' },
+  { key: 'bullColor', label: 'Pump / Bullish', hint: 'Buy pressure & positive delta (#00E599)' },
+  { key: 'bearColor', label: 'Dump / Bearish', hint: 'Sell pressure & risk alerts (#FF4D6A)' },
+];
 
 export const SettingsObservabilityModal: React.FC<SettingsObservabilityModalProps> = ({
   open,
@@ -31,6 +48,9 @@ export const SettingsObservabilityModal: React.FC<SettingsObservabilityModalProp
   onTogglePanel,
   onToggleTab,
   onResetLayout,
+  themeColors,
+  onChangeThemeColors,
+  onResetDefaultColors,
   notificationPrefs,
   onChangeNotificationPrefs,
   activeBuyBarCount,
@@ -48,8 +68,11 @@ export const SettingsObservabilityModal: React.FC<SettingsObservabilityModalProp
 
   if (!open) return null;
 
+  const isDefaultColors = isDefaultThemeColors(themeColors);
+
   const tabs: Array<{ id: SettingsTabId; label: string; icon: React.ReactNode }> = [
     { id: 'LAYOUT', label: 'Layout', icon: <LayoutTemplate className="w-3.5 h-3.5" /> },
+    { id: 'COLORS', label: 'Colors', icon: <Palette className="w-3.5 h-3.5" /> },
     { id: 'NOTIFICATIONS', label: 'Notifications', icon: <Bell className="w-3.5 h-3.5" /> },
     { id: 'OBSERVABILITY', label: 'Observability', icon: <Server className="w-3.5 h-3.5" /> },
     { id: 'FILTERS', label: 'Heuristics', icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
@@ -66,7 +89,7 @@ export const SettingsObservabilityModal: React.FC<SettingsObservabilityModalProp
               Brigg.AI Settings Bar
             </h2>
             <p className="text-[11px] text-slate-400">
-              Workspace layout, notification pop-up placement, heuristics & telemetry
+              Workspace layout, terminal colors, notifications, heuristics & telemetry
             </p>
           </div>
           <button type="button" onClick={onClose} className="p-1 text-slate-400 hover:text-white">
@@ -95,13 +118,88 @@ export const SettingsObservabilityModal: React.FC<SettingsObservabilityModalProp
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {tab === 'LAYOUT' && (
-            <LayoutSettingsPanel
-              layout={layout}
-              onApplyPreset={onApplyPreset}
-              onTogglePanel={onTogglePanel}
-              onToggleTab={onToggleTab}
-              onResetLayout={onResetLayout}
-            />
+            <div className="space-y-4">
+              <LayoutSettingsPanel
+                layout={layout}
+                onApplyPreset={onApplyPreset}
+                onTogglePanel={onTogglePanel}
+                onToggleTab={onToggleTab}
+                onResetLayout={onResetLayout}
+              />
+
+              <div className="p-3 rounded-sm border border-[#1E2330] bg-[#08090D] flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-display font-semibold text-slate-100">Terminal Color Theme</div>
+                  <div className="text-[11px] text-slate-400">
+                    {isDefaultColors
+                      ? 'Using default Brigg.AI dark terminal colors'
+                      : 'Custom terminal colors active'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onResetDefaultColors}
+                  className="px-2.5 py-1 rounded-sm border border-[#1E2330] bg-[#12151E] hover:border-[#7C5CFF]/50 text-[11px] font-mono text-slate-200 hover:text-[#C4B5FD] inline-flex items-center gap-1.5 shrink-0"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Reset Default Colors
+                </button>
+              </div>
+            </div>
+          )}
+
+          {tab === 'COLORS' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-display font-semibold text-slate-100">Terminal Colors</h3>
+                  <p className="text-[11px] text-slate-400">
+                    Customize canvas, panel, border, accent, and signal colors or revert to the default dark palette.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onResetDefaultColors}
+                  className="px-3 py-1.5 rounded-sm border border-[#7C5CFF]/50 bg-[#7C5CFF]/15 hover:bg-[#7C5CFF]/25 text-[11px] font-mono font-semibold text-[#C4B5FD] inline-flex items-center gap-1.5 shrink-0 transition-colors"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Reset Default Colors
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {COLOR_FIELDS.map((field) => {
+                  const currentVal = themeColors[field.key];
+                  const defaultVal = DEFAULT_TERMINAL_COLORS[field.key];
+                  return (
+                    <div
+                      key={field.key}
+                      className="p-3 rounded-sm border border-[#1E2330] bg-[#08090D] flex items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-medium text-slate-100 truncate">{field.label}</div>
+                        <div className="text-[10px] text-slate-400 truncate">{field.hint}</div>
+                        <div className="text-[10px] font-mono text-slate-500 mt-0.5">
+                          Current: <span className="text-slate-300">{currentVal}</span> · Default: {defaultVal}
+                        </div>
+                      </div>
+                      <input
+                        type="color"
+                        value={currentVal}
+                        onChange={(e) =>
+                          onChangeThemeColors({
+                            ...themeColors,
+                            [field.key]: e.target.value.toUpperCase(),
+                          })
+                        }
+                        aria-label={field.label}
+                        className="w-9 h-9 rounded-sm border border-[#1E2330] bg-transparent cursor-pointer shrink-0"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           {tab === 'NOTIFICATIONS' && (
@@ -116,7 +214,7 @@ export const SettingsObservabilityModal: React.FC<SettingsObservabilityModalProp
               <div className="p-3 rounded-sm border border-[#1E2330] bg-[#08090D] space-y-1.5 text-[11px] text-slate-300">
                 <div className="font-display font-semibold text-slate-100">Timing Rules</div>
                 <p className="text-slate-400">
-                  • On-screen pop-up card displays for <span className="font-mono text-[#00E599]">5 seconds</span> at your selected corner (Top-Left, Top-Right, Bottom-Left, or Bottom-Right).
+                  • On-screen pop-up card displays for <span className="font-mono text-[#00E599]">2.5 seconds</span> at your selected corner (or can be hidden anytime).
                 </p>
                 <p className="text-slate-400">
                   • Every incoming buy notification remains inside the <span className="font-mono text-[#C4B5FD]">Notification Bar</span> for <span className="font-mono text-[#C4B5FD]">2 minutes</span> unless manually deleted.

@@ -336,6 +336,26 @@ export interface CandlePoint {
   atr14?: number;
 }
 
+export interface ChartSniperSignal {
+  id: string;
+  time: number; // unix seconds matching candle bar
+  price: number;
+  kind: 'PUMP_ENTRY' | 'DUMP_EXIT' | 'SNIPER_IN' | 'SNIPER_OUT';
+  label: string;
+  confidence_pct: number; // 0..100
+  reason: string;
+}
+
+export interface PumpDumpOutlook {
+  bias: 'PUMP_LIKELY' | 'DUMP_RISK' | 'CHOP_NEUTRAL';
+  pump_probability_pct: number;
+  dump_probability_pct: number;
+  sniper_entry_price: number;
+  sniper_exit_price: number;
+  dump_invalidation_price: number;
+  headline: string;
+}
+
 export interface ChartIntelligence {
   timeframe: ChartTimeframe;
   candles: CandlePoint[];
@@ -344,6 +364,8 @@ export interface ChartIntelligence {
   volatility_pct: number;
   support_levels: number[];
   resistance_levels: number[];
+  sniper_signals: ChartSniperSignal[];
+  pump_dump_outlook: PumpDumpOutlook;
   breakout_sequence: {
     current_stage:
       | 'Quiet/Sideways'

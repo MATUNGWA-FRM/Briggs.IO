@@ -72,6 +72,9 @@ export async function buildInitialSocialFeed(params: {
   const xStatus: DataStatus = SERVER_CONFIG.providers.x.configured ? 'REAL' : 'MOCK';
   const tgStatus: DataStatus = SERVER_CONFIG.providers.telegram.configured ? 'REAL' : 'MOCK';
   const twitchStatus: DataStatus = SERVER_CONFIG.providers.twitch.configured ? 'REAL' : 'UNAVAILABLE';
+  const ticker = cleanSym || symbol.replace('$', '');
+  const xSearchUrl = `https://x.com/search?q=${encodeURIComponent('$' + ticker)}&f=live`;
+  const redditSearchUrl = `https://www.reddit.com/search/?q=${encodeURIComponent(ticker + ' solana')}&sort=new`;
 
   const momentumLabel = priceChange1h >= 0 ? `+${priceChange1h.toFixed(1)}%` : `${priceChange1h.toFixed(1)}%`;
   const syntheticSeeds: Array<{
@@ -82,25 +85,27 @@ export async function buildInitialSocialFeed(params: {
     sentiment: SocialMentionEvent['sentiment'];
     engagement: number;
     organicity: SocialMentionEvent['organicity'];
+    url?: string;
     offsetMs: number;
     status: DataStatus;
   }> = [
     {
       platform: 'x',
       author: '@sol_flow_desk',
-      channel: hasXLink ? `$${cleanSym || symbol} Official / CT` : 'Solana CT Feed',
-      text: `$${cleanSym || symbol} 1H price delta ${momentumLabel}; watching buy/sell imbalance and holder retention around VWAP.`,
+      channel: hasXLink ? `$${ticker} Official / CT` : 'Solana CT Feed',
+      text: `$${ticker} 1H price delta ${momentumLabel}; watching buy/sell imbalance and holder retention around VWAP.`,
       sentiment: priceChange1h >= 2 ? 'BULLISH' : priceChange1h <= -5 ? 'BEARISH' : 'NEUTRAL',
       engagement: Math.round(35 + seededUnit(address, 11) * 140),
       organicity: seededUnit(address, 12) > 0.28 ? 'ORGANIC' : 'AUTOMATED_RISK',
+      url: xSearchUrl,
       offsetMs: 14_000,
       status: xStatus,
     },
     {
       platform: 'telegram',
       author: 'tg_alpha_scanner',
-      channel: hasTelegramLink ? `${cleanSym || symbol} Community` : 'Solana Alpha Radar',
-      text: `Liquidity & bundle check active on $${cleanSym || symbol}. Monitoring fresh wallets entering last 15M.`,
+      channel: hasTelegramLink ? `${ticker} Community` : 'Solana Alpha Radar',
+      text: `Liquidity & bundle check active on $${ticker}. Monitoring fresh wallets entering last 15M.`,
       sentiment: 'NEUTRAL',
       engagement: Math.round(18 + seededUnit(address, 13) * 75),
       organicity: 'ORGANIC',
@@ -113,15 +118,33 @@ export async function buildInitialSocialFeed(params: {
       channel: 'Solana Memecoin Watch',
       text:
         priceChange1h >= 0
-          ? `$${cleanSym || symbol} holding upper range with steady unique buyer count.`
-          : `$${cleanSym || symbol} testing lower demand band; watch for distribution spikes.`,
+          ? `$${ticker} holding upper range with steady unique buyer count.`
+          : `$${ticker} testing lower demand band; watch for distribution spikes.`,
       sentiment: priceChange1h >= 0 ? 'BULLISH' : 'BEARISH',
       engagement: Math.round(22 + seededUnit(address, 14) * 90),
       organicity: 'ORGANIC',
+      url: xSearchUrl,
       offsetMs: 46_000,
       status: xStatus,
     },
   ];
+
+  // Ensure coin-specific Reddit posts are always present even if public Reddit API rate-limits or returns 0 hits
+  const hasRealReddit = events.some((ev) => ev.platform === 'reddit');
+  if (!hasRealReddit) {
+    syntheticSeeds.push({
+      platform: 'reddit',
+      author: 'u/solana_tape_analyst',
+      channel: 'r/SolanaMemeCoins',
+      text: `$${ticker} thread: tracking ${momentumLabel} 1H move, top-10 wallet concentration & LP depth on Solana DEXs.`,
+      sentiment: priceChange1h >= 1 ? 'BULLISH' : priceChange1h <= -3 ? 'BEARISH' : 'NEUTRAL',
+      engagement: Math.round(14 + seededUnit(address, 19) * 52),
+      organicity: 'ORGANIC',
+      url: redditSearchUrl,
+      offsetMs: 36_000,
+      status: 'MOCK',
+    });
+  }
 
   if (SERVER_CONFIG.providers.twitch.configured || events.length < 4) {
     syntheticSeeds.push({
@@ -130,7 +153,7 @@ export async function buildInitialSocialFeed(params: {
       channel: 'Twitch Crypto Stream',
       text:
         twitchStatus === 'REAL'
-          ? `Stream chat discussing $${cleanSym || symbol} breakout structure.`
+          ? `Stream chat discussing $${ticker} breakout structure.`
           : `Twitch chat feed inactive (set TWITCH_CLIENT_ID & TWITCH_CLIENT_SECRET for live stream mentions).`,
       sentiment: 'NEUTRAL',
       engagement: twitchStatus === 'REAL' ? 24 : 0,
@@ -151,12 +174,13 @@ export async function buildInitialSocialFeed(params: {
       sentiment: s.sentiment,
       engagement: s.engagement,
       organicity: s.organicity,
+      url: s.url,
       timestamp_ms: now - s.offsetMs,
       data_status: s.status,
     });
   }
 
-  return events.sort((a, b) => b.timestamp_ms - a.timestamp_ms).slice(0, 20);
+  return events.sort((a, b) => b.timestamp_ms - a.timestamp_ms).slice(0, 24);
 }
 
 const STREAM_TEMPLATES = [

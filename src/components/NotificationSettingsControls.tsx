@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bell, BellOff, Trash2 } from 'lucide-react';
+import { Eye, EyeOff, Trash2 } from 'lucide-react';
 import {
   NOTIFICATION_POSITION_OPTIONS,
   type NotificationPosition,
@@ -37,7 +37,7 @@ export const NotificationSettingsControls: React.FC<NotificationSettingsControls
             Buy Notification Pop-Up & Bar
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5">
-            Pop-up shows on screen for <span className="font-mono text-[#00E599]">5s</span> · stays in Notification Bar for{' '}
+            Pop-up shows on screen for <span className="font-mono text-[#00E599]">2.5s</span> (or hide) · stays in Notification Bar for{' '}
             <span className="font-mono text-[#C4B5FD]">2m</span>
           </div>
         </div>
@@ -47,11 +47,12 @@ export const NotificationSettingsControls: React.FC<NotificationSettingsControls
           className={`px-2.5 py-1 rounded-sm border font-mono text-[11px] inline-flex items-center gap-1.5 shrink-0 transition-colors ${
             prefs.popupsEnabled
               ? 'border-[#00E599]/50 bg-[#00E599]/15 text-[#00E599]'
-              : 'border-[#1E2330] bg-[#12151E] text-slate-400 hover:text-slate-200'
+              : 'border-amber-500/40 bg-amber-500/10 text-amber-300 hover:text-amber-200'
           }`}
+          title={prefs.popupsEnabled ? 'Click to hide on-screen pop-ups' : 'Click to show on-screen pop-ups'}
         >
-          {prefs.popupsEnabled ? <Bell className="w-3 h-3" /> : <BellOff className="w-3 h-3" />}
-          {prefs.popupsEnabled ? 'ENABLED' : 'MUTED'}
+          {prefs.popupsEnabled ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+          {prefs.popupsEnabled ? 'POP-UP SHOWN' : 'POP-UP HIDDEN'}
         </button>
       </div>
 

@@ -138,8 +138,8 @@ export const AnalysisOverviewPanel: React.FC<AnalysisOverviewPanelProps> = ({
             {(
               [
                 ['HOLDERS', 'Holders & Bubble Map'],
+                ['SOCIAL_TRACKER', 'Live Social Tracker'],
                 ['LIQUIDITY_VOLUME', 'Liquidity & Slippage'],
-                ['SOCIAL_RISK', 'Social & Risk Engine'],
                 ['FORENSICS', 'Forensics & Sources'],
               ] as Array<[WorkspaceTabId, string]>
             ).map(([id, label]) => (

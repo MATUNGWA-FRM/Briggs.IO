@@ -250,11 +250,11 @@ export const ScorePanel: React.FC<ScorePanelProps> = ({
               <span className="text-slate-200">{panel.model_outputs.volume_score}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Wallet</span>
+              <span className="text-slate-400">Orderflow</span>
               <span className="text-slate-200">{panel.model_outputs.wallet_score}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Social</span>
+              <span className="text-slate-400">Velocity</span>
               <span className="text-slate-200">{panel.model_outputs.social_model_score}</span>
             </div>
             <div className="flex justify-between">

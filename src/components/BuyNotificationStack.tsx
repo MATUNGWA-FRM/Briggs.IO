@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowUpRight, BellRing, Trash2, X } from 'lucide-react';
+import { ArrowUpRight, BellRing, EyeOff, Trash2, X } from 'lucide-react';
 import {
   BUY_NOTIFICATION_TTL_MS,
   BUY_POPUP_TTL_MS,
@@ -27,6 +27,7 @@ interface BuyNotificationStackProps {
   enabled: boolean;
   position: NotificationPosition;
   onDismissPopup: (id: string) => void;
+  onHideAllPopups: () => void;
   onDelete: (id: string) => void;
   onOpenNotificationBar: () => void;
   onSelectToken: (address: string) => void;
@@ -45,13 +46,14 @@ export const BuyNotificationStack: React.FC<BuyNotificationStackProps> = ({
   enabled,
   position,
   onDismissPopup,
+  onHideAllPopups,
   onDelete,
   onOpenNotificationBar,
   onSelectToken,
 }) => {
   if (!enabled) return null;
 
-  // Pop-ups stay visible on screen for 5 seconds; after 5s they remain in the 2-minute Notification Bar
+  // Pop-ups stay visible on screen for 2.5 seconds; after 2.5s they remain in the 2-minute Notification Bar
   const activePopups = getActivePopupNotifications(notifications, nowMs).slice(0, 3);
   if (activePopups.length === 0) return null;
 
@@ -63,11 +65,11 @@ export const BuyNotificationStack: React.FC<BuyNotificationStackProps> = ({
         isTop ? 'flex-col' : 'flex-col-reverse'
       } gap-2 pointer-events-none`}
       role="region"
-      aria-label="Live Buy Pop-Up Notifications (5s)"
+      aria-label="Live Buy Pop-Up Notifications (2.5s)"
     >
       {activePopups.map((n) => {
         const remainingPopupMs = Math.max(0, n.popup_expires_at_ms - nowMs);
-        const remainingSec = Math.max(1, Math.ceil(remainingPopupMs / 1000));
+        const remainingSecLabel = `${(remainingPopupMs / 1000).toFixed(1)}s`;
         const pct = Math.max(0, Math.min(100, (remainingPopupMs / BUY_POPUP_TTL_MS) * 100));
         const sourceLabel =
           n.source === 'LIVE_DEXSCREENER'
@@ -94,8 +96,8 @@ export const BuyNotificationStack: React.FC<BuyNotificationStackProps> = ({
                 </button>
 
                 <div className="flex items-center gap-1 shrink-0 font-mono text-[10px] tabular-nums">
-                  <span className="text-[#00E599]" title="Screen pop-up duration (5s)">
-                    {remainingSec}s
+                  <span className="text-[#00E599]" title="Screen pop-up duration (2.5s)">
+                    {remainingSecLabel}
                   </span>
                   <button
                     type="button"
@@ -110,8 +112,8 @@ export const BuyNotificationStack: React.FC<BuyNotificationStackProps> = ({
                     type="button"
                     onClick={() => onDismissPopup(n.id)}
                     className="p-0.5 rounded-sm text-slate-400 hover:text-slate-100 hover:bg-[#171B26] transition-colors"
-                    title="Hide pop-up (keeps in 2m notification bar)"
-                    aria-label="Dismiss buy pop-up"
+                    title="Hide this pop-up (keeps in 2m notification bar)"
+                    aria-label="Hide buy pop-up"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -125,26 +127,37 @@ export const BuyNotificationStack: React.FC<BuyNotificationStackProps> = ({
                 <span className="text-slate-300">@ ${n.price_usd}</span>
               </div>
 
-              <div className="flex items-center justify-between font-mono text-[10px] text-slate-400">
-                <span>
+              <div className="flex items-center justify-between font-mono text-[10px] text-slate-400 gap-2">
+                <span className="truncate">
                   {n.maker_short} · {sourceLabel}
                 </span>
-                <button
-                  type="button"
-                  onClick={onOpenNotificationBar}
-                  className="inline-flex items-center gap-1 text-[#C4B5FD] hover:underline"
-                  title="Open 2-minute Notification Bar"
-                >
-                  <BellRing className="w-2.5 h-2.5" />
-                  <span>2m Bar</span>
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={onHideAllPopups}
+                    className="inline-flex items-center gap-1 text-slate-400 hover:text-amber-300"
+                    title="Hide future screen pop-ups (notifications stay in 2m bar)"
+                  >
+                    <EyeOff className="w-2.5 h-2.5" />
+                    <span>Hide pop-ups</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onOpenNotificationBar}
+                    className="inline-flex items-center gap-1 text-[#C4B5FD] hover:underline"
+                    title="Open 2-minute Notification Bar"
+                  >
+                    <BellRing className="w-2.5 h-2.5" />
+                    <span>2m Bar</span>
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* 5-Second On-Screen Pop-Up Countdown Bar */}
+            {/* 2.5-Second On-Screen Pop-Up Countdown Bar */}
             <div className="h-0.5 w-full bg-[#1E2330]">
               <div
-                className="h-full bg-[#00E599] transition-all duration-1000 linear"
+                className="h-full bg-[#00E599] transition-all duration-200 linear"
                 style={{ width: `${pct}%` }}
               />
             </div>

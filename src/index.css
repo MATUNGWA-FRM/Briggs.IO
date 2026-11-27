@@ -7,10 +7,19 @@
 }
 
 @layer base {
+  :root {
+    --brigg-bg: #07080C;
+    --brigg-surface: #0C0E14;
+    --brigg-border: #1E2330;
+    --brigg-accent: #7C5CFF;
+    --brigg-bull: #00E599;
+    --brigg-bear: #FF4D6A;
+  }
+
   html,
   body {
     font-family: var(--font-sans);
-    background-color: #07080C;
+    background-color: var(--brigg-bg);
     color: #E5E7EB;
     color-scheme: dark;
   }
@@ -22,6 +31,37 @@
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }
+}
+
+/* Custom color overrides applied only when user customizes theme colors in Settings */
+html[data-brigg-custom-theme="true"] .bg-\[\#07080C\],
+html[data-brigg-custom-theme="true"] .bg-\[\#08090D\] {
+  background-color: var(--brigg-bg) !important;
+}
+html[data-brigg-custom-theme="true"] .bg-\[\#0C0E14\] {
+  background-color: var(--brigg-surface) !important;
+}
+html[data-brigg-custom-theme="true"] .border-\[\#1E2330\] {
+  border-color: var(--brigg-border) !important;
+}
+html[data-brigg-custom-theme="true"] .text-\[\#9D7BFF\],
+html[data-brigg-custom-theme="true"] .text-\[\#C4B5FD\] {
+  color: var(--brigg-accent) !important;
+}
+html[data-brigg-custom-theme="true"] .bg-\[\#7C5CFF\] {
+  background-color: var(--brigg-accent) !important;
+}
+html[data-brigg-custom-theme="true"] .text-\[\#00E599\] {
+  color: var(--brigg-bull) !important;
+}
+html[data-brigg-custom-theme="true"] .bg-\[\#00E599\] {
+  background-color: var(--brigg-bull) !important;
+}
+html[data-brigg-custom-theme="true"] .text-\[\#FF4D6A\] {
+  color: var(--brigg-bear) !important;
+}
+html[data-brigg-custom-theme="true"] .bg-\[\#FF4D6A\] {
+  background-color: var(--brigg-bear) !important;
 }
 
 @keyframes tickFlashUp {
@@ -52,16 +92,118 @@
   animation: tickFlashDown 0.65s ease-out;
 }
 
+/* Animated lightning & live energy border glow for Pump & Dump probability cards */
+@keyframes lightningFlicker {
+  0%, 100% {
+    opacity: 0.9;
+    transform: scale(1) rotate(0deg);
+    filter: drop-shadow(0 0 3px currentColor);
+  }
+  18% {
+    opacity: 1;
+    transform: scale(1.14) rotate(-4deg);
+    filter: drop-shadow(0 0 8px currentColor);
+  }
+  26% {
+    opacity: 0.55;
+    transform: scale(0.95) rotate(2deg);
+    filter: drop-shadow(0 0 2px currentColor);
+  }
+  34% {
+    opacity: 1;
+    transform: scale(1.18) rotate(-2deg);
+    filter: drop-shadow(0 0 10px currentColor);
+  }
+  65% {
+    opacity: 0.85;
+    transform: scale(1.03) rotate(0deg);
+    filter: drop-shadow(0 0 4px currentColor);
+  }
+}
+
+@keyframes energySheenSweep {
+  0% {
+    transform: translateX(-120%) skewX(-18deg);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.55;
+  }
+  60% {
+    opacity: 0.25;
+  }
+  100% {
+    transform: translateX(220%) skewX(-18deg);
+    opacity: 0;
+  }
+}
+
+@keyframes pumpGlowPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 1px rgba(0, 229, 153, 0.24), 0 0 12px rgba(0, 229, 153, 0.08);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(0, 229, 153, 0.55), 0 0 20px rgba(0, 229, 153, 0.22);
+  }
+}
+
+@keyframes dumpGlowPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 1px rgba(255, 77, 106, 0.24), 0 0 12px rgba(255, 77, 106, 0.08);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(255, 77, 106, 0.55), 0 0 20px rgba(255, 77, 106, 0.22);
+  }
+}
+
+.lightning-flicker {
+  animation: lightningFlicker 2.1s infinite ease-in-out;
+}
+
+.pump-energy-card {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(0, 229, 153, 0.42);
+  animation: pumpGlowPulse 2.6s infinite ease-in-out;
+}
+
+.dump-energy-card {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(255, 77, 106, 0.42);
+  animation: dumpGlowPulse 2.6s infinite ease-in-out;
+}
+
+.pump-energy-card::after,
+.dump-energy-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 45%;
+  pointer-events: none;
+  animation: energySheenSweep 3.2s infinite ease-in-out;
+}
+
+.pump-energy-card::after {
+  background: linear-gradient(90deg, transparent, rgba(0, 229, 153, 0.14), transparent);
+}
+
+.dump-energy-card::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 77, 106, 0.14), transparent);
+}
+
 /* Crisp obsidian scrollbars matching Padre terminal panes */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: #07080C;
+  background: var(--brigg-bg);
 }
 ::-webkit-scrollbar-thumb {
-  background: #1E2330;
+  background: var(--brigg-border);
   border-radius: 2px;
 }
 ::-webkit-scrollbar-thumb:hover {

@@ -73,9 +73,14 @@ export const TopBar: React.FC<TopBarProps> = ({
               <path d="M15 7H20V12" />
             </svg>
           </span>
-          <span className="font-display text-sm font-bold tracking-tight text-slate-100">
-            Brigg<span className="text-[#9D7BFF]">.AI</span>
-          </span>
+          <div className="flex flex-col leading-none">
+            <span className="font-display text-sm font-bold tracking-tight text-slate-100">
+              Brigg<span className="text-[#9D7BFF]">.AI</span>
+            </span>
+            <span className="text-[9px] font-mono text-slate-400 tracking-tight mt-0.5">
+              Powered by <span className="text-[#C4B5FD]">KendriBanks™</span>
+            </span>
+          </div>
         </button>
 
         <nav className="hidden md:flex items-center gap-1 text-xs font-medium">

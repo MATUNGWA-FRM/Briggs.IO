@@ -1,6 +1,6 @@
 import type { LiveTradeEvent } from './types';
 
-export const BUY_POPUP_TTL_MS = 5_000; // 5 seconds on-screen pop-up
+export const BUY_POPUP_TTL_MS = 2_500; // 2.5 seconds on-screen pop-up
 export const BUY_NOTIFICATION_TTL_MS = 120_000; // 2 minutes in Notification Bar
 
 export type NotificationPosition =

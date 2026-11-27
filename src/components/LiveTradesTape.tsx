@@ -56,7 +56,7 @@ export const LiveTradesTape: React.FC<LiveTradesTapeProps> = ({
                 <th className="py-2 px-3 text-right">Price USD</th>
                 <th className="py-2 px-3 text-right">Total USD</th>
                 <th className="py-2 px-3">Maker</th>
-                <th className="py-2 px-3 text-right">Feed Source</th>
+                <th className="py-2 px-3 text-right">Venue</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1E2330]/70">

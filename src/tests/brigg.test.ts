@@ -31,7 +31,18 @@ import {
   type BuyNotificationItem,
 } from '../components/BuyNotificationStack.tsx';
 import { sanitizeNotificationPrefs } from '../shared/notificationConfig.ts';
+import {
+  computeMeasureMetrics,
+  computeSupplyScale,
+  formatChartValue,
+} from '../shared/chartHelpers.ts';
 import { LAYOUT_PRESETS, sanitizeLayoutState } from '../shared/layoutConfig.ts';
+import {
+  DEFAULT_TERMINAL_COLORS,
+  isDefaultThemeColors,
+  resetDefaultThemeColors,
+  sanitizeThemeColors,
+} from '../shared/themeConfig.ts';
 
 describe('Brigg.AI V1 Core Verification Suite', () => {
   beforeEach(() => {
@@ -483,10 +494,14 @@ describe('Brigg.AI V1 Core Verification Suite', () => {
 
     expect(LAYOUT_PRESETS.CHART_FOCUS.chartHeight).toBeGreaterThan(LAYOUT_PRESETS.DEFAULT.chartHeight);
     expect(LAYOUT_PRESETS.ANALYSIS_FOCUS.openTabs).toContain('ANALYSIS');
+    expect(LAYOUT_PRESETS.DEFAULT.openTabs).toContain('HOLDERS');
     expect(LAYOUT_PRESETS.DEFAULT.openTabs).toContain('SOCIAL_TRACKER');
 
-    const withSocial = sanitizeLayoutState({ openTabs: ['SOCIAL_TRACKER', 'GRAPH'], activeTab: 'SOCIAL_TRACKER' });
-    expect(withSocial.openTabs).toEqual(['SOCIAL_TRACKER', 'GRAPH']);
+    const withSocial = sanitizeLayoutState({
+      openTabs: ['SOCIAL_TRACKER', 'HOLDERS', 'GRAPH'],
+      activeTab: 'SOCIAL_TRACKER',
+    });
+    expect(withSocial.openTabs).toEqual(['SOCIAL_TRACKER', 'HOLDERS', 'GRAPH']);
     expect(withSocial.activeTab).toBe('SOCIAL_TRACKER');
   });
 
@@ -553,10 +568,16 @@ describe('Brigg.AI V1 Core Verification Suite', () => {
     expect(chart.timeframe).toBe('1S');
     expect(chart.candles.length).toBe(90);
     expect(chart.candles[1].time - chart.candles[0].time).toBe(1);
+    expect(chart.pump_dump_outlook.pump_probability_pct).toBeGreaterThanOrEqual(12);
+    expect(chart.pump_dump_outlook.dump_probability_pct).toBeGreaterThanOrEqual(12);
+    expect(chart.pump_dump_outlook.sniper_entry_price).toBeGreaterThan(0);
+    expect(chart.pump_dump_outlook.sniper_exit_price).toBeGreaterThan(0);
+    expect(chart.pump_dump_outlook.dump_invalidation_price).toBeGreaterThan(0);
+    expect(Array.isArray(chart.sniper_signals)).toBe(true);
   });
 
-  it('shows pop-ups on screen for 5s, retains them in notification bar for 2m, and supports position prefs & deletion', () => {
-    expect(BUY_POPUP_TTL_MS).toBe(5_000);
+  it('shows pop-ups on screen for 2.5s, retains them in notification bar for 2m, and supports position prefs & deletion', () => {
+    expect(BUY_POPUP_TTL_MS).toBe(2_500);
     expect(BUY_NOTIFICATION_TTL_MS).toBe(120_000);
 
     const start = 1_700_000_000_000;
@@ -580,10 +601,10 @@ describe('Brigg.AI V1 Core Verification Suite', () => {
       expires_at_ms: start + 30_000 + BUY_NOTIFICATION_TTL_MS,
     };
 
-    // Screen pop-up is visible at +4s and hides at +5s while staying in the 2m bar
-    expect(getActivePopupNotifications([itemA], start + 4_000)).toHaveLength(1);
-    expect(getActivePopupNotifications([itemA], start + 5_000)).toHaveLength(0);
-    expect(pruneExpiredBuyNotifications([itemA], start + 5_000)).toHaveLength(1);
+    // Screen pop-up is visible at +2.0s and hides at +2.5s while staying in the 2m bar
+    expect(getActivePopupNotifications([itemA], start + 2_000)).toHaveLength(1);
+    expect(getActivePopupNotifications([itemA], start + 2_500)).toHaveLength(0);
+    expect(pruneExpiredBuyNotifications([itemA], start + 2_500)).toHaveLength(1);
 
     // Dismissing pop-up hides it from screen early without deleting from 2m bar
     const dismissed = dismissPopupNotificationById([itemA], 'buy_1');
@@ -603,5 +624,49 @@ describe('Brigg.AI V1 Core Verification Suite', () => {
       popupsEnabled: false,
     });
     expect(sanitizeNotificationPrefs({ position: 'INVALID_POS' }).position).toBe('BOTTOM_RIGHT');
+  });
+
+  it('scales Y-axis between Token Price and Market Cap and computes Measure Rule percentage move', () => {
+    const supply = computeSupplyScale(0.002, 2_000_000);
+    expect(supply).toBe(1_000_000_000);
+    expect(formatChartValue(0.002 * supply, 'MC')).toBe('$2.00M');
+    expect(formatChartValue(0.002, 'PRICE')).toBe('$0.002000');
+
+    const measure = computeMeasureMetrics(
+      { time: 1_700_000_000, price: 0.002 },
+      { time: 1_700_000_900, price: 0.0025 },
+      60,
+      supply
+    );
+    expect(measure.pctChange).toBeCloseTo(25, 5);
+    expect(measure.valueDelta).toBeCloseTo(500_000, 3);
+    expect(measure.barsCount).toBe(15);
+    expect(measure.durationLabel).toBe('15m');
+  });
+
+  it('validates default terminal color scheme and resets custom colors to defaults', () => {
+    expect(DEFAULT_TERMINAL_COLORS).toEqual({
+      bgCanvas: '#07080C',
+      bgSurface: '#0C0E14',
+      borderColor: '#1E2330',
+      accentColor: '#7C5CFF',
+      bullColor: '#00E599',
+      bearColor: '#FF4D6A',
+    });
+    expect(isDefaultThemeColors(DEFAULT_TERMINAL_COLORS)).toBe(true);
+
+    const custom = sanitizeThemeColors({
+      bgCanvas: '#111827',
+      accentColor: 'not-a-hex',
+      bullColor: '#22c55e',
+    });
+    expect(custom.bgCanvas).toBe('#111827');
+    expect(custom.accentColor).toBe(DEFAULT_TERMINAL_COLORS.accentColor);
+    expect(custom.bullColor).toBe('#22C55E');
+    expect(isDefaultThemeColors(custom)).toBe(false);
+
+    const reset = resetDefaultThemeColors();
+    expect(reset).toEqual(DEFAULT_TERMINAL_COLORS);
+    expect(isDefaultThemeColors(reset)).toBe(true);
   });
 });

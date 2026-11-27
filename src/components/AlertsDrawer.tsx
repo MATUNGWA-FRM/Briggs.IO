@@ -81,7 +81,7 @@ export const AlertsDrawer: React.FC<AlertsDrawerProps> = ({
               Notification Bar & Alert Center
             </h2>
             <p className="text-[11px] text-slate-400">
-              5s on-screen pop-up · 2m notification bar retention · No autonomous trading
+              2.5s on-screen pop-up · 2m notification bar retention · No autonomous trading
             </p>
           </div>
           <button type="button" onClick={onClose} className="p-1 text-slate-400 hover:text-white">
@@ -119,7 +119,7 @@ export const AlertsDrawer: React.FC<AlertsDrawerProps> = ({
 
             {buyNotifications.length === 0 ? (
               <div className="p-3 rounded-sm border border-[#1E2330] bg-[#08090D] text-slate-400">
-                Listening for live BUY trades. New notifications pop on screen for 5s and stay here for 2 minutes.
+                Listening for live BUY trades. New notifications pop on screen for 2.5s (unless hidden) and stay here for 2 minutes.
               </div>
             ) : (
               <div className="space-y-1.5">

@@ -1,4 +1,10 @@
-import type { CandlePoint, ChartIntelligence, ChartTimeframe } from '../../shared/types.ts';
+import type {
+  CandlePoint,
+  ChartIntelligence,
+  ChartSniperSignal,
+  ChartTimeframe,
+  PumpDumpOutlook,
+} from '../../shared/types.ts';
 import type { AggregatedTokenInputs } from '../connectors/aggregator.ts';
 import { seededUnit } from '../connectors/base.ts';
 
@@ -250,6 +256,128 @@ export function buildChartIntelligence(
   const currentStage = (stages.find((s) => s.status === 'ACTIVE' || s.status === 'FAILED')?.name ||
     'Action State') as ChartIntelligence['breakout_sequence']['current_stage'];
 
+  // Compute Sniper Entry/Out & Pump/Dump Signals across the candle history
+  const sniperSignals: ChartSniperSignal[] = [];
+  const avgBarVol =
+    rawCandles.reduce((acc, c) => acc + c.volume, 0) / Math.max(1, rawCandles.length);
+  let lastSignalIdx = -10;
+
+  for (let i = 15; i < rawCandles.length; i++) {
+    if (i - lastSignalIdx < 6) continue;
+    const prev = rawCandles[i - 1];
+    const c = rawCandles[i];
+    const prevEma9 = prev.ema9 ?? prev.close;
+    const prevEma21 = prev.ema21 ?? prev.close;
+    const curEma9 = c.ema9 ?? c.close;
+    const curEma21 = c.ema21 ?? c.close;
+    const curVwap = c.vwap ?? c.close;
+    const prevVwap = prev.vwap ?? prev.close;
+    const rsi = c.rsi14 ?? 50;
+    const volBoost = c.volume / Math.max(1, avgBarVol);
+    const body = Math.abs(c.close - c.open);
+    const upperWick = c.high - Math.max(c.open, c.close);
+    const lowerWick = Math.min(c.open, c.close) - c.low;
+
+    const bullCross = prevEma9 <= prevEma21 && curEma9 > curEma21;
+    const vwapReclaim = prev.close < prevVwap && c.close > curVwap && c.close > c.open && volBoost >= 1.15;
+    const oversoldBounce = rsi <= 38 && c.close > c.open && lowerWick >= body * 0.6;
+
+    const bearCross = prevEma9 >= prevEma21 && curEma9 < curEma21;
+    const vwapBreakdown = prev.close > prevVwap && c.close < curVwap && c.close < c.open && volBoost >= 1.15;
+    const overboughtDumpWick = rsi >= 68 && c.close < c.open && upperWick >= body * 0.65;
+
+    if (bullCross || vwapReclaim || oversoldBounce) {
+      const kind: ChartSniperSignal['kind'] = bullCross || vwapReclaim ? 'PUMP_ENTRY' : 'SNIPER_IN';
+      const conf = Math.min(84, Math.round(52 + volBoost * 10 + (c.close > curVwap ? 6 : 0)));
+      sniperSignals.push({
+        id: `sig_${c.time}_in`,
+        time: c.time,
+        price: Number(c.close.toPrecision(5)),
+        kind,
+        label: kind === 'PUMP_ENTRY' ? 'PUMP IN' : 'SNIPER IN',
+        confidence_pct: conf,
+        reason: bullCross
+          ? 'EMA9 crossed above EMA21 on active demand'
+          : vwapReclaim
+          ? `VWAP reclaim with ${volBoost.toFixed(1)}x bar volume`
+          : `RSI(${rsi.toFixed(0)}) bounce off lower demand wick`,
+      });
+      lastSignalIdx = i;
+    } else if (bearCross || vwapBreakdown || overboughtDumpWick) {
+      const kind: ChartSniperSignal['kind'] = bearCross || vwapBreakdown ? 'DUMP_EXIT' : 'SNIPER_OUT';
+      const conf = Math.min(84, Math.round(52 + volBoost * 10 + (rsi > 68 ? 8 : 0)));
+      sniperSignals.push({
+        id: `sig_${c.time}_out`,
+        time: c.time,
+        price: Number(c.close.toPrecision(5)),
+        kind,
+        label: kind === 'DUMP_EXIT' ? 'DUMP OUT' : 'SNIPER OUT',
+        confidence_pct: conf,
+        reason: bearCross
+          ? 'EMA9 crossed below EMA21 — momentum rollover'
+          : vwapBreakdown
+          ? `VWAP breakdown on ${volBoost.toFixed(1)}x sell volume`
+          : `RSI(${rsi.toFixed(0)}) exhaustion + upper wick rejection`,
+      });
+      lastSignalIdx = i;
+    }
+  }
+
+  // Pump vs Dump Bias & Sniper Entry/Out Levels for Shitcoin Scalping
+  const buySell5m = (m.buys_5m || 1) / Math.max(1, m.sells_5m || 1);
+  const buySell1h = (m.buys_1h || 1) / Math.max(1, m.sells_1h || 1);
+  const sniperBundleRisk = (m.sniper_pct || 10) + (m.bundle_pct || 8);
+  const lastRsi = last.rsi14 ?? 50;
+  const aboveVwap = currentPrice >= (last.vwap ?? currentPrice);
+  const emaBullish = (last.ema9 ?? currentPrice) >= (last.ema21 ?? currentPrice);
+
+  let pumpProb = 36;
+  if (volExpanding) pumpProb += 12;
+  if (buySell5m >= 1.15) pumpProb += 10;
+  if (buySell1h >= 1.1) pumpProb += 8;
+  if (emaBullish) pumpProb += 7;
+  if (aboveVwap) pumpProb += 5;
+  if (m.price_change_5m > 1.5) pumpProb += 6;
+  if (lastRsi > 76) pumpProb -= 12; // overextended risk
+  if (sniperBundleRisk > 35) pumpProb -= 10;
+  pumpProb = Math.max(12, Math.min(84, Math.round(pumpProb)));
+
+  let dumpProb = 28;
+  if (m.price_change_5m < -1) dumpProb += 12;
+  if (m.price_change_1h < 0) dumpProb += 9;
+  if (buySell5m < 0.92) dumpProb += 11;
+  if (!emaBullish) dumpProb += 8;
+  if (!aboveVwap) dumpProb += 6;
+  if (lastRsi >= 72) dumpProb += 10;
+  if (sniperBundleRisk > 30) dumpProb += 10;
+  dumpProb = Math.max(12, Math.min(86, Math.round(dumpProb)));
+
+  const bias: PumpDumpOutlook['bias'] =
+    pumpProb >= dumpProb + 10
+      ? 'PUMP_LIKELY'
+      : dumpProb >= pumpProb + 10
+      ? 'DUMP_RISK'
+      : 'CHOP_NEUTRAL';
+
+  const vwapAnchor = last.vwap ?? currentPrice;
+  const atrStep = Math.max(currentPrice * 0.025, last.atr14 ?? currentPrice * 0.035);
+  const sniperEntryPrice = Number(
+    Math.max(support1, Math.min(currentPrice * 0.992, vwapAnchor * 0.995)).toPrecision(5)
+  );
+  const sniperExitPrice = Number(
+    Math.max(resistance1 * 0.99, currentPrice + atrStep * 1.8).toPrecision(5)
+  );
+  const dumpInvalidationPrice = Number(
+    Math.max(support1 * 0.94, Math.min(sniperEntryPrice * 0.95, currentPrice - atrStep * 1.4)).toPrecision(5)
+  );
+
+  const outlookHeadline =
+    bias === 'PUMP_LIKELY'
+      ? `PUMP BIAS (${pumpProb}% vs ${dumpProb}% dump) · Sniper dip entry near $${sniperEntryPrice}, scale-out target $${sniperExitPrice}`
+      : bias === 'DUMP_RISK'
+      ? `DUMP RISK (${dumpProb}% vs ${pumpProb}% pump) · Sniper exit / protect below $${dumpInvalidationPrice}`
+      : `CHOP / TWO-WAY (${pumpProb}% pump / ${dumpProb}% dump) · Wait for breakout > $${resistance1.toPrecision(4)} or dip to $${sniperEntryPrice}`;
+
   return {
     timeframe,
     candles: rawCandles,
@@ -258,6 +386,16 @@ export function buildChartIntelligence(
     volatility_pct: Number((volatilityFactor * 100).toFixed(2)),
     support_levels: [Number(support1.toPrecision(5)), Number(midBand.toPrecision(5))],
     resistance_levels: [Number(resistance1.toPrecision(5)), Number((resistance1 * 1.08).toPrecision(5))],
+    sniper_signals: sniperSignals,
+    pump_dump_outlook: {
+      bias,
+      pump_probability_pct: pumpProb,
+      dump_probability_pct: dumpProb,
+      sniper_entry_price: sniperEntryPrice,
+      sniper_exit_price: sniperExitPrice,
+      dump_invalidation_price: dumpInvalidationPrice,
+      headline: outlookHeadline,
+    },
     breakout_sequence: {
       current_stage: currentStage,
       stages,
@@ -267,10 +405,10 @@ export function buildChartIntelligence(
         type: 'PUMP_ZONE',
         price_low: Number((resistance1 * 0.99).toPrecision(5)),
         price_high: Number((resistance1 * 1.12).toPrecision(5)),
-        probability_pct: volExpanding && m.buys_1h > m.sells_1h ? 58 : 34,
-        why_identified: 'Upper volatility breakout band aligned with EMA9 > EMA21 structure (probabilistic, not a guarantee)',
+        probability_pct: pumpProb,
+        why_identified: 'Upper volatility breakout band aligned with EMA9 > EMA21 & orderflow imbalance (probabilistic, not a guarantee)',
         supporting_data: [
-          `1H volume ratio ${volRatio.toFixed(2)}x`,
+          `1H volume ratio ${volRatio.toFixed(2)}x · 5M B/S ${buySell5m.toFixed(2)}x`,
           `RSI(14) at ${last.rsi14 ?? 50}`,
         ],
         conflicting_evidence: [
@@ -285,11 +423,11 @@ export function buildChartIntelligence(
         type: 'DUMP_ZONE',
         price_low: Number((support1 * 0.88).toPrecision(5)),
         price_high: Number((support1 * 1.01).toPrecision(5)),
-        probability_pct: m.price_change_1h < 0 ? 54 : 29,
-        why_identified: 'Lower structural demand zone where breakdown could accelerate stop/panic exits',
+        probability_pct: dumpProb,
+        why_identified: 'Lower structural demand zone where breakdown could accelerate sniper/panic exits',
         supporting_data: [
           `ATR(14) range implies ${(volatilityFactor * 100).toFixed(1)}% bar swing`,
-          `Sniper/Bundle supply ~${((m.sniper_pct || 12) + (m.bundle_pct || 9)).toFixed(1)}%`,
+          `Sniper/Bundle supply ~${sniperBundleRisk.toFixed(1)}%`,
         ],
         conflicting_evidence: ['Active buy flow absorbing dips above VWAP'],
         invalidation_conditions: ['Higher low formed above VWAP with expanding organic buy count'],

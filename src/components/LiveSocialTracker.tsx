@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ExternalLink, Pause, Play, Radio, RefreshCw, Search } from 'lucide-react';
 import type { ApprovedSocialProvider, SocialIntelligence, SocialMentionEvent } from '../shared/types';
 
@@ -10,12 +10,13 @@ interface LiveSocialTrackerProps {
   onToggleStreaming: () => void;
   onRefresh: () => void;
   loading?: boolean;
+  initialPlatformFilter?: 'ALL' | ApprovedSocialProvider;
 }
 
 const PLATFORM_LABELS: Record<ApprovedSocialProvider, string> = {
-  x: 'X (Twitter)',
+  x: 'Live Tweets (X)',
   telegram: 'Telegram',
-  reddit: 'Reddit',
+  reddit: 'Reddit Posts',
   twitch: 'Twitch',
 };
 
@@ -34,10 +35,15 @@ export const LiveSocialTracker: React.FC<LiveSocialTrackerProps> = ({
   onToggleStreaming,
   onRefresh,
   loading = false,
+  initialPlatformFilter = 'ALL',
 }) => {
-  const [platformFilter, setPlatformFilter] = useState<'ALL' | ApprovedSocialProvider>('ALL');
+  const [platformFilter, setPlatformFilter] = useState<'ALL' | ApprovedSocialProvider>(initialPlatformFilter);
   const [sentimentFilter, setSentimentFilter] = useState<'ALL' | SocialMentionEvent['sentiment']>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    setPlatformFilter(initialPlatformFilter);
+  }, [initialPlatformFilter]);
 
   const filteredEvents = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -162,7 +168,13 @@ export const LiveSocialTracker: React.FC<LiveSocialTrackerProps> = ({
                   : 'border-[#1E2330] bg-[#08090D] text-slate-400 hover:text-slate-200'
               }`}
             >
-              {plat === 'ALL' ? 'All Sources' : plat}
+              {plat === 'ALL'
+                ? 'All Sources'
+                : plat === 'x'
+                ? 'Live Tweets (X)'
+                : plat === 'reddit'
+                ? 'Reddit Posts'
+                : plat}
             </button>
           ))}
         </div>

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { AlertsDrawer } from './components/AlertsDrawer';
 import { AnalysisOverviewPanel } from './components/AnalysisOverviewPanel';
+import { BottomUtilityBar } from './components/BottomUtilityBar';
 import { BriggChart } from './components/BriggChart';
 import { BubbleMap2D } from './components/BubbleMap2D';
 import { BubbleMap3D } from './components/BubbleMap3D';
@@ -57,6 +58,13 @@ import {
   saveNotificationPrefs,
   type NotificationPrefs,
 } from './shared/notificationConfig';
+import {
+  applyThemeCssVars,
+  loadSavedThemeColors,
+  resetDefaultThemeColors,
+  saveThemeColors,
+  type TerminalThemeColors,
+} from './shared/themeConfig';
 import type {
   AlertEvent,
   AlertRule,
@@ -140,28 +148,39 @@ export default function App() {
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPrefs>(() =>
     loadSavedNotificationPrefs()
   );
+  const [themeColors, setThemeColors] = useState<TerminalThemeColors>(() => loadSavedThemeColors());
   const [toastNowMs, setToastNowMs] = useState<number>(() => Date.now());
   const lastBuyToastMsRef = useRef<number>(0);
 
-  // Persist layout & notification preferences to localStorage
+  // Persist layout, theme colors & notification preferences to localStorage
   useEffect(() => {
     saveLayout(layout);
   }, [layout]);
 
   useEffect(() => {
+    applyThemeCssVars(themeColors);
+    saveThemeColors(themeColors);
+  }, [themeColors]);
+
+  useEffect(() => {
     saveNotificationPrefs(notificationPrefs);
   }, [notificationPrefs]);
 
-  // 1-second timer to update 2-minute countdown & prune expired buy notifications
+  // 250ms tick while 2.5s pop-up is active (1s thereafter) for 2-minute notification bar
   useEffect(() => {
     if (buyNotifications.length === 0) return;
+    const nowInit = Date.now();
+    const hasActivePopup =
+      notificationPrefs.popupsEnabled &&
+      buyNotifications.some((n) => !n.popup_dismissed && n.popup_expires_at_ms > nowInit);
+    const intervalMs = hasActivePopup ? 250 : 1000;
     const timer = setInterval(() => {
       const now = Date.now();
       setToastNowMs(now);
       setBuyNotifications((prev) => pruneExpiredBuyNotifications(prev, now));
-    }, 1000);
+    }, intervalMs);
     return () => clearInterval(timer);
-  }, [buyNotifications.length]);
+  }, [buyNotifications, notificationPrefs.popupsEnabled]);
 
   // Close inline "+ Add Tab" dropdown on outside click
   useEffect(() => {
@@ -279,6 +298,12 @@ export default function App() {
 
   const handleResetLayout = () => {
     setLayout(resetSavedLayout());
+  };
+
+  const handleResetDefaultColors = () => {
+    const defaults = resetDefaultThemeColors();
+    setThemeColors(defaults);
+    applyThemeCssVars(defaults);
   };
 
   const loadAlerts = useCallback(async () => {
@@ -435,9 +460,9 @@ export default function App() {
 
         if (tick.trade) {
           setRecentTrades((prev) => [tick.trade!, ...prev].slice(0, 45));
-          if (tick.trade.side === 'BUY' && notificationPrefs.popupsEnabled) {
+          if (tick.trade.side === 'BUY') {
             const now = Date.now();
-            if (now - lastBuyToastMsRef.current >= 5500) {
+            if (now - lastBuyToastMsRef.current >= 3000) {
               lastBuyToastMsRef.current = now;
               setToastNowMs(now);
               const nextNotice: BuyNotificationItem = {
@@ -451,6 +476,7 @@ export default function App() {
                 created_at_ms: now,
                 popup_expires_at_ms: now + BUY_POPUP_TTL_MS,
                 expires_at_ms: now + BUY_NOTIFICATION_TTL_MS,
+                popup_dismissed: !notificationPrefs.popupsEnabled,
               };
               setBuyNotifications((prev) =>
                 [nextNotice, ...pruneExpiredBuyNotifications(prev, now)].slice(0, 20)
@@ -811,6 +837,8 @@ export default function App() {
                       liveTick={liveTick}
                       streaming={streaming}
                       onToggleStreaming={() => setStreaming((s) => !s)}
+                      marketCapUsd={analysis.forensics.market_cap_usd}
+                      spotPriceUsd={analysis.forensics.price_usd}
                       heightPx={layout.chartHeight}
                       onCollapse={() => handleTogglePanel('showChart')}
                     />
@@ -963,6 +991,8 @@ export default function App() {
                               liveTick={liveTick}
                               streaming={streaming}
                               onToggleStreaming={() => setStreaming((s) => !s)}
+                              marketCapUsd={analysis.forensics.market_cap_usd}
+                              spotPriceUsd={analysis.forensics.price_usd}
                               heightPx={360}
                             />
                           )}
@@ -970,6 +1000,14 @@ export default function App() {
                             <AnalysisOverviewPanel
                               analysis={analysis}
                               onOpenTab={handleOpenTab}
+                            />
+                          )}
+                          {layout.activeTab === 'HOLDERS' && (
+                            <HoldersIntelligencePanel
+                              holders={analysis.holders}
+                              bubbleMap={analysis.bubble_map}
+                              selectedWallet={selectedWallet}
+                              onSelectWallet={setSelectedWallet}
                             />
                           )}
                           {layout.activeTab === 'TRADES' && (
@@ -992,24 +1030,6 @@ export default function App() {
                               loading={socialLoading}
                             />
                           )}
-                          {layout.activeTab === 'FORENSICS' && <ForensicsPanel analysis={analysis} />}
-                          {layout.activeTab === 'LIQUIDITY_VOLUME' && (
-                            <LiquidityVolumePanel
-                              liquidity={analysis.liquidity}
-                              volume={analysis.volume}
-                              slippage={analysis.slippage}
-                              positionSizeUsd={positionSizeUsd}
-                              onPositionSizeChange={setPositionSizeUsd}
-                            />
-                          )}
-                          {layout.activeTab === 'HOLDERS' && (
-                            <HoldersIntelligencePanel
-                              holders={analysis.holders}
-                              bubbleMap={analysis.bubble_map}
-                              selectedWallet={selectedWallet}
-                              onSelectWallet={setSelectedWallet}
-                            />
-                          )}
                           {layout.activeTab === 'BUBBLE_2D' && (
                             <BubbleMap2D
                               graph={analysis.bubble_map}
@@ -1022,6 +1042,16 @@ export default function App() {
                               graph={analysis.bubble_map}
                               selectedWallet={selectedWallet}
                               onSelectWallet={setSelectedWallet}
+                            />
+                          )}
+                          {layout.activeTab === 'FORENSICS' && <ForensicsPanel analysis={analysis} />}
+                          {layout.activeTab === 'LIQUIDITY_VOLUME' && (
+                            <LiquidityVolumePanel
+                              liquidity={analysis.liquidity}
+                              volume={analysis.volume}
+                              slippage={analysis.slippage}
+                              positionSizeUsd={positionSizeUsd}
+                              onPositionSizeChange={setPositionSizeUsd}
                             />
                           )}
                           {layout.activeTab === 'SOCIAL_RISK' && (
@@ -1124,6 +1154,9 @@ export default function App() {
         onTogglePanel={handleTogglePanel}
         onToggleTab={handleToggleTab}
         onResetLayout={handleResetLayout}
+        themeColors={themeColors}
+        onChangeThemeColors={setThemeColors}
+        onResetDefaultColors={handleResetDefaultColors}
         notificationPrefs={notificationPrefs}
         onChangeNotificationPrefs={setNotificationPrefs}
         activeBuyBarCount={buyNotifications.length}
@@ -1138,6 +1171,9 @@ export default function App() {
         onDismissPopup={(id) =>
           setBuyNotifications((prev) => dismissPopupNotificationById(prev, id))
         }
+        onHideAllPopups={() =>
+          setNotificationPrefs((prev) => ({ ...prev, popupsEnabled: false }))
+        }
         onDelete={(id) => setBuyNotifications((prev) => removeBuyNotificationById(prev, id))}
         onOpenNotificationBar={() => setAlertsOpen(true)}
         onSelectToken={(addr) => {
@@ -1145,6 +1181,23 @@ export default function App() {
           setActiveView('TERMINAL');
         }}
       />
+      {activeView === 'TERMINAL' && analysis && (
+        <BottomUtilityBar
+          symbol={analysis.forensics.symbol}
+          holders={analysis.holders}
+          bubbleMap={analysis.bubble_map}
+          selectedWallet={selectedWallet}
+          onSelectWallet={setSelectedWallet}
+          social={analysis.social}
+          socialEvents={socialFeed}
+          socialStreaming={socialStreaming}
+          onToggleSocialStreaming={() => setSocialStreaming((v) => !v)}
+          onRefreshSocial={() => loadSocialFeed(analysis.forensics.address)}
+          socialLoading={socialLoading}
+          streaming={streaming}
+          onOpenWorkspaceTab={handleOpenTab}
+        />
+      )}
     </div>
   );
 }
