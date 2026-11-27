@@ -1,0 +1,6 @@
+{
+  "name": "Brigg.AI",
+  "description": "Machine-learning-powered crypto intelligence terminal for Solana memecoins and short-term speculative tokens, combining token forensics, liquidity, volume, wallet intelligence, social signals, risk analysis, and continuous model learning.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
