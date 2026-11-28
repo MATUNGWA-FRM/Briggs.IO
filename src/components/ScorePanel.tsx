@@ -1,6 +1,16 @@
 import React, { useState } from 'react';
-import { BookmarkPlus, PanelRightClose, ShieldAlert, ShieldCheck } from 'lucide-react';
-import type { BriggScorePanelData, HumanOverrideRecord } from '../shared/types';
+import {
+  ArrowRightLeft,
+  BookmarkPlus,
+  ChevronDown,
+  ChevronUp,
+  PanelRightClose,
+  Radio,
+  ShieldAlert,
+  ShieldCheck,
+} from 'lucide-react';
+import type { LiveSignalSettings } from '../shared/terminalSettings';
+import type { BriggMode, BriggScorePanelData, HumanOverrideRecord, LiveSignalState } from '../shared/types';
 
 interface ScorePanelProps {
   panel: BriggScorePanelData;
@@ -11,6 +21,14 @@ interface ScorePanelProps {
   recording: boolean;
   widthPx?: number;
   onCollapse?: () => void;
+  onSwitchMode?: (m: BriggMode) => void;
+  liveSignal?: LiveSignalState;
+  liveSignalSettings: LiveSignalSettings;
+}
+
+function formatSignalTime(ms: number): string {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
 }
 
 export const ScorePanel: React.FC<ScorePanelProps> = ({
@@ -22,14 +40,19 @@ export const ScorePanel: React.FC<ScorePanelProps> = ({
   recording,
   widthPx,
   onCollapse,
+  onSwitchMode,
+  liveSignal,
+  liveSignalSettings,
 }) => {
   const [overrideOpen, setOverrideOpen] = useState(false);
+  const [expandAnalysis, setExpandAnalysis] = useState(false);
   const [overrideDecision, setOverrideDecision] = useState<HumanOverrideRecord['user_decision']>('OVERRIDE_NO_TRADE');
   const [overrideReason, setOverrideReason] = useState('');
   const [submittingOverride, setSubmittingOverride] = useState(false);
 
   const totalTx = Math.max(1, buys5m + sells5m);
   const buyPct = Math.round((buys5m / totalTx) * 100);
+  const activeSignal = liveSignal || panel.live_signal;
 
   const actionColor =
     panel.action_state === 'NO-TRADE'
@@ -125,7 +148,7 @@ export const ScorePanel: React.FC<ScorePanelProps> = ({
         )}
       </div>
 
-      {/* Primary Quantitative Matrix */}
+      {/* Primary Quantitative Matrix (directly under Action State) */}
       <div className="grid grid-cols-2 divide-x divide-y divide-[#1E2330] border-b border-[#1E2330] font-mono tabular-nums">
         <div className="p-2.5">
           <div className="text-[10px] uppercase tracking-wider text-slate-400 font-sans">Opportunity</div>
@@ -156,7 +179,7 @@ export const ScorePanel: React.FC<ScorePanelProps> = ({
       </div>
 
       {/* Calibrated Probability & Market Regime */}
-      <div className="px-3.5 py-2.5 border-b border-[#1E2330] space-y-1 text-xs">
+      <div className="px-3.5 py-2.5 border-b border-[#1E2330] space-y-1.5 text-xs">
         <div className="flex items-center justify-between">
           <span className="text-slate-400">Calibrated Probability</span>
           <span className="font-mono tabular-nums text-slate-100 font-semibold">
@@ -172,8 +195,142 @@ export const ScorePanel: React.FC<ScorePanelProps> = ({
         </div>
       </div>
 
-      {/* Explainability Breakdown */}
-      <div className="p-3.5 space-y-3.5 text-xs">
+      {/* Decision-Flow Live Signal & Pre-Dump Risk Card */}
+      <div className="px-3.5 py-2.5 border-b border-[#1E2330] space-y-2">
+        {liveSignalSettings.enabled && liveSignalSettings.showOnActionPanel && activeSignal && (() => {
+          const sig = activeSignal;
+          const sigClass =
+            sig.signal === 'BUY'
+              ? 'border-[#00E599]/55 bg-[#00E599]/10 text-[#00E599]'
+              : sig.signal === 'SELL' || sig.signal === 'DUMP RISK'
+              ? 'border-[#FF4D6A]/55 bg-[#FF4D6A]/10 text-[#FF8599]'
+              : sig.signal === 'PARTIAL SELL'
+              ? 'border-orange-500/55 bg-orange-500/10 text-orange-300'
+              : 'border-amber-500/50 bg-amber-500/10 text-amber-300';
+          const preDump = sig.pre_dump;
+          const flow = sig.decision_flow;
+          return (
+            <div className={`p-2.5 rounded-sm border ${sigClass}`}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-slate-300">
+                  <Radio className="w-3 h-3 shrink-0" />
+                  <span>Live Decision</span>
+                </div>
+                <span className="font-mono text-[10px] text-slate-400 tabular-nums">
+                  {formatSignalTime(sig.updated_at_ms)}
+                </span>
+              </div>
+
+              <div className="mt-1 flex items-baseline justify-between gap-2">
+                <div className="flex items-baseline gap-1.5 flex-wrap">
+                  <span className="font-display text-sm font-bold tracking-wide">{sig.signal}</span>
+                  {flow.decision_status !== 'ALLOWED' && (
+                    <span className="font-mono text-[10px] font-semibold text-amber-300">
+                      ({flow.decision_status})
+                    </span>
+                  )}
+                </div>
+                {liveSignalSettings.showConfidence && (
+                  <span className="font-mono text-[11px] font-semibold text-slate-100 tabular-nums">
+                    Conf {sig.confidence_pct}%
+                  </span>
+                )}
+              </div>
+
+              {/* Pre-Dump Risk Strip */}
+              <div className="mt-1.5 flex items-center justify-between text-[10px] font-mono tabular-nums px-2 py-1 rounded-sm bg-[#08090D]/80 border border-white/10">
+                <span className="text-slate-400">Pre-Dump Risk</span>
+                <span
+                  className={
+                    preDump.level === 'NORMAL'
+                      ? 'text-[#00E599] font-semibold'
+                      : preDump.level === 'EARLY DUMP RISK'
+                      ? 'text-amber-300 font-semibold'
+                      : 'text-[#FF4D6A] font-bold'
+                  }
+                >
+                  {preDump.risk_pct}% · {preDump.level}
+                </span>
+              </div>
+
+              {flow.blocked_or_changed_reason && (
+                <div className="mt-1.5 text-[10px] font-mono text-amber-200 leading-snug">
+                  {flow.blocked_or_changed_reason}
+                </div>
+              )}
+
+              {/* Concise Entry / Stop / Target Context */}
+              <div className="mt-1.5 pt-1.5 border-t border-white/10 space-y-0.5 text-[10px] font-mono text-slate-300">
+                <div>
+                  <span className="text-cyan-300">Entry:</span> {sig.entry_context}
+                </div>
+                <div>
+                  <span className="text-[#FF8599]">Stop:</span> {sig.stop_context}
+                </div>
+                <div>
+                  <span className="text-[#00E599]">Target:</span> {sig.target_context}
+                </div>
+              </div>
+
+              {liveSignalSettings.showExplanation && sig.reasons.length > 0 && (
+                <div className="mt-1.5 pt-1.5 border-t border-white/10 space-y-0.5 text-[10px] text-slate-200">
+                  <div className="font-mono text-[9px] uppercase tracking-wider text-slate-400">Why:</div>
+                  {sig.reasons.slice(0, 3).map((r, i) => (
+                    <div key={i} className="leading-snug">
+                      <span
+                        className={`font-mono mr-1 ${
+                          r.direction === '+' ? 'text-[#00E599]' : 'text-[#FF4D6A]'
+                        }`}
+                      >
+                        {r.direction}
+                      </span>
+                      {r.text}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ML Token Classification (Shitcoin <= 3d vs Memecoin > 1 month) */}
+        <div className="p-2 rounded-sm border border-[#1E2330] bg-[#08090D] text-[11px] space-y-1">
+          <div className="flex items-center justify-between font-mono text-[10px]">
+            <span className="text-slate-400 uppercase tracking-wider">ML Token Class</span>
+            <span
+              className={`font-semibold ${
+                panel.classification.classified_mode === 'SHITCOIN' ? 'text-amber-300' : 'text-cyan-300'
+              }`}
+            >
+              {panel.classification.classified_mode} (
+              {panel.classification.classified_mode === 'SHITCOIN'
+                ? panel.classification.ml_shitcoin_prob_pct
+                : panel.classification.ml_memecoin_prob_pct}
+              %)
+            </span>
+          </div>
+          <div className="text-[10px] text-slate-400 leading-snug">
+            Age{' '}
+            {panel.classification.age_days < 1
+              ? `${panel.classification.age_minutes}m`
+              : `${panel.classification.age_days}d`}{' '}
+            · {panel.classification.classification_reason}
+          </div>
+          {!panel.classification.matches_active_mode && onSwitchMode && (
+            <button
+              type="button"
+              onClick={() => onSwitchMode(panel.classification.classified_mode)}
+              className="w-full mt-1 px-2 py-1 rounded-sm border border-[#7C5CFF]/50 bg-[#7C5CFF]/15 hover:bg-[#7C5CFF]/25 text-[#C4B5FD] font-mono text-[10px] inline-flex items-center justify-center gap-1 transition-colors"
+            >
+              <ArrowRightLeft className="w-3 h-3" />
+              Switch to {panel.classification.classified_mode} Panel
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Why Opportunity Exists (always scannable) + Expandable Deep Analysis */}
+      <div className="p-3.5 space-y-3 text-xs">
         <div>
           <h3 className="font-display text-[11px] uppercase tracking-wider font-semibold text-slate-300 mb-1">
             Why Opportunity Exists
@@ -188,122 +345,139 @@ export const ScorePanel: React.FC<ScorePanelProps> = ({
           </ul>
         </div>
 
-        <div>
-          <h3 className="font-display text-[11px] uppercase tracking-wider font-semibold text-slate-300 mb-1">
-            Why Risk Is Elevated
-          </h3>
-          <ul className="space-y-1 text-slate-300">
-            {panel.explainability.why_risk_elevated.length > 0 ? (
-              panel.explainability.why_risk_elevated.map((item, idx) => (
-                <li key={idx} className="leading-snug text-[11px]">
-                  <span className="font-mono text-[#FF4D6A] mr-1.5">{item.direction}</span>
-                  {item.text}
-                </li>
-              ))
-            ) : (
-              <li className="text-slate-400 text-[11px]">No acute structural warnings above threshold.</li>
-            )}
-          </ul>
-        </div>
+        <button
+          type="button"
+          onClick={() => setExpandAnalysis((v) => !v)}
+          className="w-full py-1.5 px-2.5 rounded-sm border border-[#1E2330] bg-[#08090D] hover:border-[#7C5CFF]/60 text-[11px] font-mono text-slate-200 flex items-center justify-between transition-colors"
+        >
+          <span>{expandAnalysis ? 'Hide Risk, Sub-Models & Override' : 'Expand Risk, Sub-Models & Override'}</span>
+          {expandAnalysis ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+        </button>
 
-        <div>
-          <h3 className="font-display text-[11px] uppercase tracking-wider font-semibold text-slate-300 mb-1">
-            Invalidation Conditions
-          </h3>
-          <ul className="space-y-1 text-slate-400 text-[11px]">
-            {panel.explainability.invalidation_conditions.map((cond, idx) => (
-              <li key={idx}>• {cond}</li>
-            ))}
-          </ul>
-        </div>
+        {expandAnalysis && (
+          <div className="space-y-3.5 pt-1">
 
-        {panel.explainability.conflicting_evidence.length > 0 && (
           <div>
-            <h3 className="font-display text-[11px] uppercase tracking-wider font-semibold text-amber-300 mb-1">
-              Conflicting Evidence
+            <h3 className="font-display text-[11px] uppercase tracking-wider font-semibold text-slate-300 mb-1">
+              Why Risk Is Elevated
             </h3>
-            <ul className="space-y-1 text-slate-300 text-[11px]">
-              {panel.explainability.conflicting_evidence.map((c, idx) => (
-                <li key={idx}>• {c}</li>
+            <ul className="space-y-1 text-slate-300">
+              {panel.explainability.why_risk_elevated.length > 0 ? (
+                panel.explainability.why_risk_elevated.map((item, idx) => (
+                  <li key={idx} className="leading-snug text-[11px]">
+                    <span className="font-mono text-[#FF4D6A] mr-1.5">{item.direction}</span>
+                    {item.text}
+                  </li>
+                ))
+              ) : (
+                <li className="text-slate-400 text-[11px]">No acute structural warnings above threshold.</li>
+              )}
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="font-display text-[11px] uppercase tracking-wider font-semibold text-slate-300 mb-1">
+              Invalidation Conditions
+            </h3>
+            <ul className="space-y-1 text-slate-400 text-[11px]">
+              {panel.explainability.invalidation_conditions.map((cond, idx) => (
+                <li key={idx}>• {cond}</li>
               ))}
             </ul>
           </div>
-        )}
 
-        {/* ML Ensemble Sub-Scores */}
-        <div className="pt-2 border-t border-[#1E2330]">
-          <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-slate-400 mb-1.5">
-            <span>ML Sub-Models</span>
-            <span className="font-mono">{panel.model_outputs.feature_version}</span>
-          </div>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[11px] tabular-nums">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Momentum</span>
-              <span className="text-slate-200">{panel.model_outputs.momentum_score}</span>
+          {panel.explainability.conflicting_evidence.length > 0 && (
+            <div>
+              <h3 className="font-display text-[11px] uppercase tracking-wider font-semibold text-amber-300 mb-1">
+                Conflicting Evidence
+              </h3>
+              <ul className="space-y-1 text-slate-300 text-[11px]">
+                {panel.explainability.conflicting_evidence.map((c, idx) => (
+                  <li key={idx}>• {c}</li>
+                ))}
+              </ul>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Liquidity</span>
-              <span className="text-slate-200">{panel.model_outputs.liquidity_score}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Volume</span>
-              <span className="text-slate-200">{panel.model_outputs.volume_score}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Orderflow</span>
-              <span className="text-slate-200">{panel.model_outputs.wallet_score}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Velocity</span>
-              <span className="text-slate-200">{panel.model_outputs.social_model_score}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Anomaly</span>
-              <span className="text-amber-300">{panel.model_outputs.anomaly_score}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Human Override */}
-        <div className="pt-2 border-t border-[#1E2330]">
-          <button
-            type="button"
-            onClick={() => setOverrideOpen((v) => !v)}
-            className="w-full py-1.5 px-3 rounded-sm border border-[#282F42] bg-[#12151E] hover:bg-[#191E2C] text-slate-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-[#9D7BFF]" />
-            Record Human Override
-          </button>
-
-          {overrideOpen && (
-            <form onSubmit={handleOverrideSubmit} className="mt-2 space-y-2 p-2.5 rounded-sm border border-[#1E2330] bg-[#08090D]">
-              <select
-                value={overrideDecision}
-                onChange={(e) => setOverrideDecision(e.target.value as HumanOverrideRecord['user_decision'])}
-                className="w-full bg-[#12151E] border border-[#1E2330] rounded-sm px-2 py-1 text-xs text-slate-200"
-              >
-                <option value="OVERRIDE_NO_TRADE">Override to No-Trade</option>
-                <option value="MANUAL_WATCH">Manual Watch</option>
-                <option value="MANUAL_SKIP">Manual Skip</option>
-                <option value="MANUAL_FLAG_RUG">Flag Suspected Rug</option>
-              </select>
-              <input
-                type="text"
-                value={overrideReason}
-                onChange={(e) => setOverrideReason(e.target.value)}
-                placeholder="Reason (excluded from auto-training labels)..."
-                className="w-full bg-[#12151E] border border-[#1E2330] rounded-sm px-2 py-1 text-xs text-slate-200"
-              />
-              <button
-                type="submit"
-                disabled={submittingOverride || overrideReason.trim().length < 3}
-                className="w-full py-1 bg-[#7C5CFF] hover:bg-[#6D4AFF] text-white rounded-sm text-xs font-medium disabled:opacity-50"
-              >
-                {submittingOverride ? 'Logging...' : 'Save Override'}
-              </button>
-            </form>
           )}
-        </div>
+
+          {/* ML Ensemble Sub-Scores */}
+          <div className="pt-2 border-t border-[#1E2330]">
+            <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-slate-400 mb-1.5">
+              <span>ML Sub-Models</span>
+              <span className="font-mono">{panel.model_outputs.feature_version}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[11px] tabular-nums">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Momentum</span>
+                <span className="text-slate-200">{panel.model_outputs.momentum_score}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Liquidity</span>
+                <span className="text-slate-200">{panel.model_outputs.liquidity_score}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Volume</span>
+                <span className="text-slate-200">{panel.model_outputs.volume_score}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Orderflow</span>
+                <span className="text-slate-200">{panel.model_outputs.wallet_score}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Velocity</span>
+                <span className="text-slate-200">{panel.model_outputs.social_model_score}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Anomaly</span>
+                <span className="text-amber-300">{panel.model_outputs.anomaly_score}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Human Override */}
+          <div className="pt-2 border-t border-[#1E2330]">
+            <button
+              type="button"
+              onClick={() => setOverrideOpen((v) => !v)}
+              className="w-full py-1.5 px-3 rounded-sm border border-[#282F42] bg-[#12151E] hover:bg-[#191E2C] text-slate-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-[#9D7BFF]" />
+              Record Human Override
+            </button>
+
+            {overrideOpen && (
+              <form
+                onSubmit={handleOverrideSubmit}
+                className="mt-2 space-y-2 p-2.5 rounded-sm border border-[#1E2330] bg-[#08090D]"
+              >
+                <select
+                  value={overrideDecision}
+                  onChange={(e) => setOverrideDecision(e.target.value as HumanOverrideRecord['user_decision'])}
+                  className="w-full bg-[#12151E] border border-[#1E2330] rounded-sm px-2 py-1 text-xs text-slate-200"
+                >
+                  <option value="OVERRIDE_NO_TRADE">Override to No-Trade</option>
+                  <option value="MANUAL_WATCH">Manual Watch</option>
+                  <option value="MANUAL_SKIP">Manual Skip</option>
+                  <option value="MANUAL_FLAG_RUG">Flag Suspected Rug</option>
+                </select>
+                <input
+                  type="text"
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                  placeholder="Reason (excluded from auto-training labels)..."
+                  className="w-full bg-[#12151E] border border-[#1E2330] rounded-sm px-2 py-1 text-xs text-slate-200"
+                />
+                <button
+                  type="submit"
+                  disabled={submittingOverride || overrideReason.trim().length < 3}
+                  className="w-full py-1 bg-[#7C5CFF] hover:bg-[#6D4AFF] text-white rounded-sm text-xs font-medium disabled:opacity-50"
+                >
+                  {submittingOverride ? 'Logging...' : 'Save Override'}
+                </button>
+              </form>
+            )}
+          </div>
+          </div>
+        )}
       </div>
     </aside>
   );

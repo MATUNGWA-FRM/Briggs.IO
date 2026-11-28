@@ -1,8 +1,16 @@
 import React from 'react';
 import { AlertTriangle, PanelLeftClose, RefreshCw } from 'lucide-react';
-import type { BriggFilterPreset, MarketRegimeState, ScannerTokenSummary } from '../shared/types';
+import type {
+  BriggFilterPreset,
+  BriggMode,
+  MarketRegimeState,
+  RemovedScannerTokenNotice,
+  ScannerFunnelStats,
+  ScannerTokenSummary,
+} from '../shared/types';
 
 interface TokenScannerProps {
+  mode: BriggMode;
   tokens: ScannerTokenSummary[];
   selectedAddress: string;
   onSelectToken: (address: string) => void;
@@ -16,7 +24,9 @@ interface TokenScannerProps {
   onAutoRefreshChange: (sec: 0 | 15 | 30 | 60) => void;
   countdownSec: number;
   newAddresses?: Set<string>;
+  removedTokens?: RemovedScannerTokenNotice[];
   regime?: MarketRegimeState;
+  funnel?: ScannerFunnelStats;
   widthPx?: number;
   onCollapse?: () => void;
 }
@@ -58,6 +68,7 @@ function formatAge(minutes: number): string {
 }
 
 export const TokenScanner: React.FC<TokenScannerProps> = ({
+  mode,
   tokens,
   selectedAddress,
   onSelectToken,
@@ -71,7 +82,9 @@ export const TokenScanner: React.FC<TokenScannerProps> = ({
   onAutoRefreshChange,
   countdownSec,
   newAddresses,
+  removedTokens = [],
   regime,
+  funnel,
   widthPx,
   onCollapse,
 }) => {
@@ -85,10 +98,12 @@ export const TokenScanner: React.FC<TokenScannerProps> = ({
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
             <h2 className="font-display text-xs font-bold uppercase tracking-wider text-slate-200">
-              Trenches · Scanner
+              Trenches · {mode === 'SHITCOIN' ? 'Shitcoins ≤3d' : 'Memecoins >1mo'}
             </h2>
             <p className="text-[11px] text-slate-400 font-mono tabular-nums truncate">
-              {tokens.length} pairs · {regime ? regime.regime : 'Solana'}
+              {funnel
+                ? `${funnel.discovered_count} disc → ${funnel.valid_count} valid → ${funnel.quality_candidates_count} qual → ${tokens.length} top`
+                : `${tokens.length} pairs · ML Cohort · ${regime ? regime.regime : 'Solana'}`}
             </p>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -173,6 +188,19 @@ export const TokenScanner: React.FC<TokenScannerProps> = ({
             </button>
           ))}
         </div>
+
+        {removedTokens.length > 0 && (
+          <div
+            className="px-2 py-1 rounded-sm border border-amber-500/35 bg-amber-500/10 text-[10px] font-mono text-amber-200 truncate"
+            title={removedTokens
+              .map((r) => `${r.symbol} (${r.reason})${r.replaced_by_symbol ? ` -> ${r.replaced_by_symbol}` : ''}`)
+              .join('\n')}
+          >
+            Lifecycle: Removed {removedTokens[0].symbol}
+            {removedTokens[0].replaced_by_symbol ? ` → ${removedTokens[0].replaced_by_symbol}` : ''}
+            {removedTokens.length > 1 ? ` (+${removedTokens.length - 1})` : ''}
+          </div>
+        )}
       </div>
 
       {/* Dense Padre Trenches Pair List */}
@@ -225,7 +253,11 @@ export const TokenScanner: React.FC<TokenScannerProps> = ({
                           </span>
                         )}
                         <span className="text-[10px] font-mono text-slate-400 shrink-0">
-                          {formatAge(t.age_minutes)} · {t.data_status}
+                          {formatAge(t.age_minutes)} ·{' '}
+                          <span className={t.classification?.classified_mode === 'SHITCOIN' ? 'text-amber-300' : 'text-cyan-300'}>
+                            {t.classification?.classified_mode === 'SHITCOIN' ? 'SHIT' : 'MEME'}
+                          </span>{' '}
+                          · {t.data_status}
                         </span>
                       </div>
                       <div className="text-[10px] font-mono text-slate-400 tabular-nums truncate">
@@ -244,8 +276,8 @@ export const TokenScanner: React.FC<TokenScannerProps> = ({
                 </div>
 
                 {/* Brigg Quantitative Line */}
-                <div className="mt-1.5 flex items-center justify-between text-[10px] font-mono tabular-nums text-slate-400">
-                  <span>
+                <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] font-mono tabular-nums text-slate-400">
+                  <span className="shrink-0">
                     Opp <strong className="text-slate-200">{t.opportunity_score}</strong>
                     <span className="text-slate-600 mx-1">/</span>
                     Risk{' '}
@@ -255,9 +287,33 @@ export const TokenScanner: React.FC<TokenScannerProps> = ({
                     <span className="text-slate-600 mx-1">/</span>
                     {t.confidence_pct}%
                   </span>
-                  <span className="inline-flex items-center gap-1">
-                    {t.has_source_conflict && <AlertTriangle className="w-2.5 h-2.5 text-amber-400" />}
-                    <span className={`font-semibold ${actionColor}`}>{t.action_state}</span>
+                  <span className="inline-flex items-center gap-1.5 min-w-0 justify-end">
+                    {t.pre_dump_level && t.pre_dump_level !== 'NORMAL' && (
+                      <span
+                        className="text-[9px] font-semibold text-[#FF4D6A] shrink-0"
+                        title={`Pre-Dump Risk: ${t.pre_dump_risk_pct ?? 0}% (${t.pre_dump_level})`}
+                      >
+                        DUMP {t.pre_dump_risk_pct ?? 0}%
+                      </span>
+                    )}
+                    {t.live_signal && (
+                      <span
+                        className={`text-[9px] font-bold shrink-0 ${
+                          t.live_signal === 'BUY'
+                            ? 'text-[#00E599]'
+                            : t.live_signal === 'SELL' || t.live_signal === 'DUMP RISK'
+                            ? 'text-[#FF4D6A]'
+                            : 'text-sky-300'
+                        }`}
+                        title={`Live Signal: ${t.live_signal}${t.decision_status ? ` (${t.decision_status})` : ''}`}
+                      >
+                        {t.live_signal}
+                      </span>
+                    )}
+                    {t.has_source_conflict && <AlertTriangle className="w-2.5 h-2.5 text-amber-400 shrink-0" />}
+                    <span className={`font-semibold truncate ${actionColor}`} title={`Action State: ${t.action_state}`}>
+                      {t.action_state}
+                    </span>
                   </span>
                 </div>
               </button>

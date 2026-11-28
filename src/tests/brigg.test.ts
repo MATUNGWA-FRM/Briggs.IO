@@ -1,11 +1,17 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { estimateSlippageAndExecution } from '../server/analytics/checklist.ts';
+import { estimateSlippageAndExecution, runAutomatedChecklist } from '../server/analytics/checklist.ts';
 import { evaluateNoTradeEngine } from '../server/analytics/noTradeEngine.ts';
 import { evaluateRiskEngine } from '../server/analytics/riskEngine.ts';
+import {
+  reconcileScannerSlots,
+  validateScannerTokenLifecycle,
+} from '../server/analytics/tokenLifecycle.ts';
 import { resetDbForTests } from '../server/database/db.ts';
 import { runHistoricalBacktest } from '../server/ml/backtest.ts';
+import { classifyTokenKind } from '../server/ml/classifier.ts';
 import { assertNoTemporalLeakage } from '../server/ml/features.ts';
 import {
+  getMlLearningActivityAndSummary,
   listModelVersions,
   recordHumanOverride,
   rollbackToModelVersion,
@@ -52,6 +58,19 @@ import {
   mergeGlossaryEntries,
   removeGlossaryTerm,
 } from '../shared/terminology.ts';
+import { evaluateLiveSignal } from '../shared/liveSignalEngine.ts';
+import { evaluatePreDumpRisk } from '../shared/preDumpEngine.ts';
+import {
+  DEFAULT_LIVE_SIGNAL_SETTINGS,
+  sanitizeChartAiOverlaySettings,
+  sanitizeChartIndicatorStates,
+  sanitizeLiveSignalSettings,
+  sanitizeScannerEngineConfig,
+  sanitizeSignalEngineThresholds,
+} from '../shared/terminalSettings.ts';
+import { fetchDexScreenerScannerUniverse } from '../server/connectors/dexscreener/adapter.ts';
+import { MEMECOIN_MIN_AGE_MINUTES, SHITCOIN_MAX_AGE_MINUTES, type ScannerTokenSummary } from '../shared/types.ts';
+import { INITIAL_FILTER_PRESETS } from '../server/config.ts';
 
 describe('Brigg.AI V1 Core Verification Suite', () => {
   beforeEach(() => {
@@ -714,4 +733,645 @@ describe('Brigg.AI V1 Core Verification Suite', () => {
     const afterRemove = removeGlossaryTerm(withCustom, 'Liquidity Sweep');
     expect(afterRemove.some((e) => e.term === 'Liquidity Sweep')).toBe(false);
   });
+
+  it('classifies Shitcoins (<=3d) vs Memecoins (>1 month) and resolves 3d-30d transition via ML', () => {
+    const youngShitcoin = classifyTokenKind({
+      age_minutes: 180,
+      market_cap_usd: 145_000,
+      liquidity_usd: 28_000,
+      holder_count: 620,
+      sniper_pct: 22,
+      bundle_pct: 14,
+      migration_status: 'NOT_MIGRATED',
+      volume_24h_usd: 420_000,
+      active_mode: 'SHITCOIN',
+    });
+    expect(youngShitcoin.initial_rule_class).toBe('SHITCOIN');
+    expect(youngShitcoin.classified_mode).toBe('SHITCOIN');
+    expect(youngShitcoin.matches_active_mode).toBe(true);
+    expect(youngShitcoin.ml_shitcoin_prob_pct).toBeGreaterThanOrEqual(66);
+
+    const threeDayEdge = classifyTokenKind({
+      age_minutes: SHITCOIN_MAX_AGE_MINUTES,
+      market_cap_usd: 400_000,
+      liquidity_usd: 45_000,
+      holder_count: 1100,
+      sniper_pct: 15,
+      bundle_pct: 10,
+      migration_status: 'MIGRATED',
+      volume_24h_usd: 600_000,
+      active_mode: 'MEMECOIN',
+    });
+    expect(threeDayEdge.classified_mode).toBe('SHITCOIN');
+    expect(threeDayEdge.matches_active_mode).toBe(false);
+
+    const monthPlusMeme = classifyTokenKind({
+      age_minutes: MEMECOIN_MIN_AGE_MINUTES + 1440,
+      market_cap_usd: 95_000_000,
+      liquidity_usd: 3_200_000,
+      holder_count: 42_000,
+      sniper_pct: 4,
+      bundle_pct: 3,
+      migration_status: 'MIGRATED',
+      volume_24h_usd: 14_000_000,
+      active_mode: 'MEMECOIN',
+    });
+    expect(monthPlusMeme.initial_rule_class).toBe('MEMECOIN');
+    expect(monthPlusMeme.classified_mode).toBe('MEMECOIN');
+    expect(monthPlusMeme.matches_active_mode).toBe(true);
+    expect(monthPlusMeme.ml_memecoin_prob_pct).toBeGreaterThanOrEqual(68);
+
+    // 14-day transition token with weak LP & high snipers vs mature LP & holders
+    const transitionWeak = classifyTokenKind({
+      age_minutes: 10 * 1440,
+      market_cap_usd: 180_000,
+      liquidity_usd: 18_000,
+      holder_count: 500,
+      sniper_pct: 28,
+      bundle_pct: 20,
+      migration_status: 'NOT_MIGRATED',
+      volume_24h_usd: 500_000,
+      active_mode: 'SHITCOIN',
+    });
+    expect(transitionWeak.initial_rule_class).toBe('TRANSITION');
+    expect(transitionWeak.classified_mode).toBe('SHITCOIN');
+
+    const transitionMature = classifyTokenKind({
+      age_minutes: 22 * 1440,
+      market_cap_usd: 45_000_000,
+      liquidity_usd: 1_800_000,
+      holder_count: 19_000,
+      sniper_pct: 5,
+      bundle_pct: 4,
+      migration_status: 'MIGRATED',
+      volume_24h_usd: 4_500_000,
+      active_mode: 'MEMECOIN',
+    });
+    expect(transitionMature.initial_rule_class).toBe('TRANSITION');
+    expect(transitionMature.classified_mode).toBe('MEMECOIN');
+  });
+
+  it('evaluates Live Signal (BUY / SELL / PARTIAL SELL / DUMP RISK / WAIT) strictly from market features and defaults ON', () => {
+    expect(DEFAULT_LIVE_SIGNAL_SETTINGS.enabled).toBe(true);
+    expect(sanitizeLiveSignalSettings({}).enabled).toBe(true);
+    expect(sanitizeLiveSignalSettings({ enabled: false }).enabled).toBe(false);
+    expect(sanitizeChartAiOverlaySettings({ pumpDumpLabels: false }).pumpDumpLabels).toBe(false);
+    expect(sanitizeChartAiOverlaySettings({}).liveSignal).toBe(true);
+
+    const buySig = evaluateLiveSignal({
+      mode: 'SHITCOIN',
+      price_usd: 0.0042,
+      price_change_5m: 6.4,
+      price_change_1h: 18.2,
+      buys_5m: 82,
+      sells_5m: 26,
+      buys_1h: 410,
+      sells_1h: 190,
+      liquidity_usd: 65_000,
+      liquidity_growth_1h_pct: 8.5,
+      volume_acceleration_pct: 42,
+      volatility_pct: 4.1,
+      rsi14: 61,
+      ema9: 0.0041,
+      ema21: 0.0038,
+      vwap: 0.0039,
+      support_level: 0.0037,
+      resistance_level: 0.0048,
+      execution_quality: 78,
+      sniper_pct: 11,
+      bundle_pct: 7,
+      social_momentum: 74,
+      market_regime_score: 0.72,
+      trigger_source: 'LIVE_MARKET_TICK',
+    });
+    expect(buySig.signal).toBe('BUY');
+    expect(buySig.confidence_pct).toBeGreaterThanOrEqual(50);
+    expect(buySig.reasons.length).toBeGreaterThanOrEqual(2);
+    expect(buySig.trigger_source).toBe('LIVE_MARKET_TICK');
+
+    const sellSig = evaluateLiveSignal({
+      mode: 'SHITCOIN',
+      price_usd: 0.0018,
+      price_change_5m: -8.5,
+      price_change_1h: -24.0,
+      buys_5m: 14,
+      sells_5m: 68,
+      buys_1h: 110,
+      sells_1h: 340,
+      liquidity_usd: 6_500,
+      liquidity_growth_1h_pct: -22,
+      volume_acceleration_pct: -15,
+      volatility_pct: 11.4,
+      rsi14: 38,
+      ema9: 0.0019,
+      ema21: 0.0022,
+      vwap: 0.0021,
+      support_level: 0.0019,
+      resistance_level: 0.0024,
+      execution_quality: 28,
+      sniper_pct: 28,
+      bundle_pct: 22,
+      social_momentum: 30,
+      market_regime_score: 0.2,
+      trigger_source: 'LIVE_MARKET_TICK',
+    });
+    expect(sellSig.signal).toBe('SELL');
+    expect(sellSig.reasons.some((r) => r.direction === '-')).toBe(true);
+
+    const partialSig = evaluateLiveSignal({
+      mode: 'MEMECOIN',
+      price_usd: 1.01,
+      price_change_5m: 0.4,
+      price_change_1h: 12.0,
+      buys_5m: 26,
+      sells_5m: 31,
+      buys_1h: 220,
+      sells_1h: 240,
+      liquidity_usd: 220_000,
+      liquidity_growth_1h_pct: 0,
+      volume_acceleration_pct: 5,
+      volatility_pct: 4.5,
+      rsi14: 76,
+      ema9: 1.0,
+      ema21: 0.99,
+      vwap: 1.0,
+      support_level: 0.9,
+      resistance_level: 1.015,
+      execution_quality: 74,
+      sniper_pct: 8,
+      bundle_pct: 6,
+      social_momentum: 55,
+      market_regime_score: 0.55,
+      trigger_source: 'INITIAL_ANALYSIS',
+    });
+    expect(partialSig.signal).toBe('PARTIAL SELL');
+  });
+
+  it('validates scanner token lifecycle and replaces invalid or stale slots cleanly', () => {
+    const preset = INITIAL_FILTER_PRESETS.find((p) => p.id === 'GENERAL')!;
+    const makeSummary = (overrides: Partial<ScannerTokenSummary>): ScannerTokenSummary => ({
+      address: 'So11111111111111111111111111111111111111112',
+      symbol: 'TEST',
+      name: 'Test Token',
+      chain: 'solana',
+      age_minutes: 120,
+      price_usd: 0.01,
+      price_change_5m: 2,
+      price_change_1h: 8,
+      market_cap_usd: 120_000,
+      liquidity_usd: 25_000,
+      volume_24h_usd: 95_000,
+      holder_count: 450,
+      top_10_pct: 18,
+      sniper_pct: 12,
+      insider_exposure: 15,
+      bundle_pct: 8,
+      migration_status: 'NOT_MIGRATED',
+      social_momentum: 60,
+      holder_growth_1h_pct: 4,
+      opportunity_score: 68,
+      risk_score: 42,
+      confidence_pct: 71,
+      execution_quality: 74,
+      action_state: 'WATCH',
+      classification: classifyTokenKind({
+        age_minutes: 120,
+        market_cap_usd: 120_000,
+        liquidity_usd: 25_000,
+        holder_count: 450,
+        sniper_pct: 12,
+        bundle_pct: 8,
+        migration_status: 'NOT_MIGRATED',
+        volume_24h_usd: 95_000,
+        active_mode: 'SHITCOIN',
+      }),
+      ranking_explanation: 'test',
+      has_source_conflict: false,
+      data_status: 'REAL',
+      freshness_seconds: 5,
+      active_providers: ['dexscreener'],
+      ...overrides,
+    });
+
+    const validQuiet = makeSummary({ symbol: 'QUIET', price_change_5m: 0, volume_24h_usd: 20_000 });
+    const staleTok = makeSummary({
+      address: 'StaleAddr1111111111111111111111111111111111',
+      symbol: 'STALE',
+      freshness_seconds: 260,
+    });
+    const zeroPriceTok = makeSummary({
+      address: 'ZeroAddr11111111111111111111111111111111111',
+      symbol: 'DEAD',
+      price_usd: 0,
+    });
+    const replacementTok = makeSummary({
+      address: 'ReplAddr11111111111111111111111111111111111',
+      symbol: 'FRESH',
+    });
+
+    expect(
+      validateScannerTokenLifecycle({ token: validQuiet, preset, mode: 'SHITCOIN' }).valid
+    ).toBe(true);
+    expect(
+      validateScannerTokenLifecycle({ token: staleTok, preset, mode: 'SHITCOIN' }).valid
+    ).toBe(false);
+
+    const reconciled = reconcileScannerSlots({
+      candidates: [validQuiet, staleTok, zeroPriceTok, replacementTok],
+      preset,
+      mode: 'SHITCOIN',
+      previousActiveAddresses: new Set([validQuiet.address, staleTok.address, zeroPriceTok.address]),
+    });
+
+    expect(reconciled.active.map((t) => t.symbol)).toEqual(['QUIET', 'FRESH']);
+    expect(reconciled.removed.map((r) => r.symbol)).toEqual(['STALE', 'DEAD']);
+    expect(reconciled.removed[0].replaced_by_symbol).toBe('FRESH');
+  });
+
+  it('enforces Shitcoin <=3d and Memecoin >30d token age check in automated checklist', () => {
+    const baseChart = buildChartIntelligence(
+      {
+        primaryMarket: {
+          provider: 'dexscreener',
+          address: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
+          symbol: 'CHK',
+          name: 'Check',
+          price_usd: 0.01,
+          price_change_5m: 2,
+          price_change_1h: 5,
+          price_change_6h: 8,
+          price_change_24h: 12,
+          liquidity_usd: 80_000,
+          market_cap_usd: 900_000,
+          fdv_usd: 900_000,
+          volume_5m_usd: 15_000,
+          volume_1h_usd: 90_000,
+          volume_6h_usd: 250_000,
+          volume_24h_usd: 600_000,
+          buys_5m: 30,
+          sells_5m: 18,
+          buys_1h: 210,
+          sells_1h: 150,
+          buys_24h: 1200,
+          sells_24h: 950,
+          dex: 'raydium',
+          pair_address: 'p_chk',
+          quote_symbol: 'SOL',
+          pair_created_at_ms: Date.now() - 86_400_000,
+          pairs: [],
+          socials: {},
+          paid_boost_active: false,
+          boost_amount: 0,
+          meta: {
+            source: 'dexscreener',
+            source_timestamp: new Date().toISOString(),
+            ingestion_timestamp: new Date().toISOString(),
+            freshness_seconds: 2,
+            confidence: 0.9,
+            data_status: 'REAL',
+          },
+        },
+        marketFeeds: [],
+        socialFeeds: [],
+        conflicts: [],
+        allMeta: [],
+        overallStatus: 'REAL',
+        avgFreshnessSeconds: 2,
+        ingestionDelayMs: 20,
+      },
+      '15M'
+    );
+
+    const commonArgs = {
+      liquidity: {
+        current_liquidity_usd: 80_000,
+        historical_liquidity_1h_ago_usd: 75_000,
+        liquidity_growth_1h_pct: 6,
+        liquidity_change_during_pumps_pct: 3,
+        liquidity_change_during_dumps_pct: -2,
+        liquidity_to_mc_ratio: 0.08,
+        liquidity_to_volume_ratio: 0.2,
+        lp_status: 'BURNED' as const,
+        lp_concentration_pct: 0,
+        estimated_exit_capacity_usd: 25_000,
+        liquidity_risk_score: 25,
+        execution_quality_score: 78,
+        data_quality_score: 85,
+        reasons: [],
+        data_status: 'REAL' as const,
+      },
+      volume: {
+        windows: [
+          {
+            timeframe: '1H' as const,
+            total_volume_usd: 90_000,
+            buy_volume_usd: 55_000,
+            sell_volume_usd: 35_000,
+            buy_count: 140,
+            sell_count: 95,
+            buy_sell_ratio: 1.47,
+            unique_traders: 110,
+          },
+        ],
+        reported_volume_24h_usd: 600_000,
+        estimated_organic_pct: 72,
+        possible_automated_pct: 28,
+        volume_acceleration_pct: 18,
+        volume_decay_pct: 0,
+        volume_to_mc_ratio: 0.6,
+        volume_to_liquidity_ratio: 5,
+        volume_per_holder_usd: 150,
+        price_volume_relationship: 'Price UP + Volume UP (Momentum Confirmation)' as const,
+        anomalies: {
+          wash_trading_risk: 'LOW' as const,
+          bot_activity_score: 20,
+          abnormal_trade_frequency: false,
+          repeated_trade_sizes_pct: 10,
+          unique_wallet_volume_divergence: 0,
+          evidence_note: '',
+        },
+        volume_quality_score: 75,
+        confidence: 0.85,
+        reasons: [],
+        data_status: 'REAL' as const,
+      },
+      holders: {
+        holder_count: 1200,
+        holder_growth_1h_pct: 4,
+        holder_growth_24h_pct: 12,
+        top_10_concentration_pct: 18,
+        top_20_concentration_pct: 26,
+        top_50_concentration_pct: 38,
+        largest_wallet_pct: 4,
+        sniper_analysis: {
+          suspected_snipers: 4,
+          supply_pct: 10,
+          exposure_band: 'LOWER (<15%)' as const,
+          avg_entry_delay_sec: 4,
+          exited_pct: 60,
+          behavior: 'Mixed' as const,
+          heuristic_note: '',
+        },
+        insider_analysis: {
+          exposure_score: 18,
+          suspected_wallets: 1,
+          supply_pct: 3,
+          behavior: 'Holding' as const,
+          evidence: [],
+        },
+        bundle_analysis: { cluster_count: 0, combined_supply_pct: 4, clusters: [] },
+        red_flags: [],
+        wallets: [],
+        edges: [],
+        distribution_health_score: 78,
+        data_status: 'REAL' as const,
+      },
+      chart: baseChart,
+      social: {
+        platforms: [],
+        social_momentum_score: 68,
+        narrative_strength_score: 64,
+        social_organicity_estimate_pct: 75,
+        community_activity_score: 70,
+        social_risk_score: 24,
+        narrative: {
+          primary_theme: 'Meme',
+          stage: 'Growing' as const,
+          virality_score: 65,
+          controversy_score: 15,
+          novelty_score: 70,
+          social_acceleration_pct: 12,
+          price_extension_note: '',
+        },
+        paid_vs_organic: {
+          classification: 'ORGANIC_DOMINANT' as const,
+          paid_boost_detected: false,
+          organic_discovery_pct: 75,
+          note: '',
+        },
+        reasons: [],
+        data_status: 'REAL' as const,
+      },
+    };
+
+    const makeForensics = (ageMinutes: number) => ({
+      address: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
+      symbol: 'CHK',
+      name: 'Check',
+      chain: 'solana' as const,
+      creator_deployer: 'abc',
+      creation_timestamp: new Date().toISOString(),
+      age_minutes: ageMinutes,
+      token_type: 'SPL',
+      launch_platform: 'Raydium',
+      deployment_platform: 'Raydium',
+      initial_liquidity_usd: 25_000,
+      current_liquidity_usd: 80_000,
+      liquidity_source: 'Raydium',
+      market_cap_usd: 900_000,
+      fdv_usd: 900_000,
+      price_usd: 0.01,
+      price_change_5m: 2,
+      price_change_1h: 5,
+      price_change_6h: 8,
+      price_change_24h: 12,
+      volume_24h_usd: 600_000,
+      trading_pairs: [],
+      primary_dex: 'raydium',
+      migration_status: 'MIGRATED' as const,
+      migration_history: [],
+      current_trading_venue: 'raydium',
+      social_links: {},
+      contract_attributes: {
+        mint_authority_revoked: true,
+        freeze_authority_revoked: true,
+        mutable_metadata: false,
+        sell_restriction_detected: false,
+        transfer_fee_bps: 0,
+        data_status: 'REAL' as const,
+      },
+      lifecycle_timeline: [],
+      data_status: 'REAL' as const,
+    });
+
+    const shitcoinOk = runAutomatedChecklist({
+      mode: 'SHITCOIN',
+      forensics: makeForensics(720),
+      ...commonArgs,
+    });
+    expect(shitcoinOk.items.find((i) => i.id === 'token_age')?.passed).toBe(true);
+
+    const shitcoinTooOld = runAutomatedChecklist({
+      mode: 'SHITCOIN',
+      forensics: makeForensics(60_000),
+      ...commonArgs,
+    });
+    expect(shitcoinTooOld.items.find((i) => i.id === 'token_age')?.passed).toBe(false);
+
+    const memeOk = runAutomatedChecklist({
+      mode: 'MEMECOIN',
+      forensics: makeForensics(60_000),
+      ...commonArgs,
+    });
+    expect(memeOk.items.find((i) => i.id === 'token_age')?.passed).toBe(true);
+
+    const memeTooYoung = runAutomatedChecklist({
+      mode: 'MEMECOIN',
+      forensics: makeForensics(720),
+      ...commonArgs,
+    });
+    expect(memeTooYoung.items.find((i) => i.id === 'token_age')?.passed).toBe(false);
+  });
+
+  it('returns real SQLite-backed ML Learning Activity and Today Learning Summary without fabricated events', () => {
+    runDailyLearningCycle(false);
+    const { learning_activity, daily_learning_summary } = getMlLearningActivityAndSummary();
+
+    expect(learning_activity.length).toBeGreaterThan(0);
+    expect(
+      learning_activity.every(
+        (ev) => Boolean(ev.technical_title && ev.simple_title && ev.timestamp)
+      )
+    ).toBe(true);
+    expect(daily_learning_summary.candidate_models).toBeGreaterThanOrEqual(4);
+    expect(daily_learning_summary.promoted_model).toMatch(/^v1\./);
+    expect(daily_learning_summary.main_learning.length).toBeGreaterThan(0);
+  });
+
+  it('blocks contradictory ML BUY (69%) during active dump conditions and resolves coherent non-contradictory explanations', () => {
+    const blockedBuy = evaluateLiveSignal({
+      mode: 'SHITCOIN',
+      price_usd: 0.0014,
+      price_change_5m: -7.2,
+      price_change_1h: 14.0,
+      buys_5m: 18,
+      sells_5m: 85,
+      buys_1h: 320,
+      sells_1h: 210,
+      liquidity_usd: 11_000,
+      liquidity_growth_1h_pct: -18,
+      volume_acceleration_pct: 45,
+      volatility_pct: 14.5,
+      rsi14: 34,
+      ema9: 0.00145,
+      ema21: 0.00168,
+      vwap: 0.00172,
+      support_level: 0.0015,
+      resistance_level: 0.0021,
+      execution_quality: 35,
+      sniper_pct: 26,
+      bundle_pct: 19,
+      social_momentum: 62,
+      market_regime_score: 0.24,
+      market_regime_label: 'Defensive Risk-Off',
+      ml_buy_probability_override: 69,
+      trigger_source: 'LIVE_MARKET_TICK',
+    });
+
+    expect(blockedBuy.decision_flow.ml_prediction.buy_probability_pct).toBe(69);
+    expect(blockedBuy.decision_flow.decision_status).toBe('BUY BLOCKED');
+    expect(blockedBuy.signal).not.toBe('BUY');
+    expect(['DUMP RISK', 'SELL']).toContain(blockedBuy.signal);
+    expect(blockedBuy.pre_dump.risk_pct).toBeGreaterThanOrEqual(64);
+    expect(['HIGH DUMP RISK', 'CONFIRMED DUMP']).toContain(blockedBuy.pre_dump.level);
+    expect(blockedBuy.decision_flow.blocked_or_changed_reason).toBeTruthy();
+    // Non-contradictory explanation check: reasons must reflect risk/bearish drivers, not positive BUY promotion
+    expect(blockedBuy.reasons.every((r) => r.direction === '-')).toBe(true);
+  });
+
+  it('separates Pre-Dump Risk state from automatic SELL unless sell confirmation conditions pass, and avoids single-indicator alerts', () => {
+    // Single isolated negative indicator must not trigger elevated pre-dump level
+    const singleSignal = evaluatePreDumpRisk({
+      mode: 'SHITCOIN',
+      price_usd: 0.012,
+      price_change_5m: 0.5,
+      price_change_1h: 6.0,
+      buys_5m: 38,
+      sells_5m: 32,
+      buys_1h: 240,
+      sells_1h: 200,
+      liquidity_usd: 45_000,
+      liquidity_growth_1h_pct: 2,
+      volume_acceleration_pct: 10,
+      volatility_pct: 10.5, // Only volatility elevated
+      rsi14: 54,
+      ema9: 0.012,
+      ema21: 0.0115,
+      vwap: 0.0118,
+      support_level: 0.011,
+      resistance_level: 0.014,
+      execution_quality: 75,
+      sniper_pct: 10,
+      bundle_pct: 6,
+    });
+    expect(singleSignal.level).toBe('NORMAL');
+    expect(singleSignal.risk_pct).toBeLessThanOrEqual(32);
+
+    // Multi-factor dump risk WITHOUT VWAP loss / support breakdown stays DUMP RISK instead of premature SELL
+    const dumpRiskPendingConfirm = evaluateLiveSignal({
+      mode: 'SHITCOIN',
+      price_usd: 0.0052,
+      price_change_5m: -2.4,
+      price_change_1h: 16.0,
+      buys_5m: 20,
+      sells_5m: 58,
+      buys_1h: 210,
+      sells_1h: 230,
+      liquidity_usd: 14_000,
+      liquidity_growth_1h_pct: -6,
+      volume_acceleration_pct: 28,
+      volatility_pct: 6.5,
+      rsi14: 41,
+      ema9: 0.0051,
+      ema21: 0.0054,
+      vwap: 0.0050, // still holding VWAP
+      support_level: 0.0048, // above support
+      resistance_level: 0.0062,
+      execution_quality: 46,
+      sniper_pct: 12,
+      bundle_pct: 8,
+      social_momentum: 48,
+      market_regime_score: 0.42,
+      trigger_source: 'LIVE_MARKET_TICK',
+    });
+    expect(dumpRiskPendingConfirm.pre_dump.level).toBe('HIGH DUMP RISK');
+    expect(dumpRiskPendingConfirm.signal).toBe('DUMP RISK');
+  });
+
+  it('sanitizes 3-state compact indicator configs, signal engine thresholds, and scanner funnel bounds', () => {
+    const ind = sanitizeChartIndicatorStates({ ema: 'EXPANDED', rsi: 'INVALID', pd: 'OFF' });
+    expect(ind.ema).toBe('EXPANDED');
+    expect(ind.rsi).toBe('COMPACT');
+    expect(ind.bb).toBe('OFF');
+    expect(ind.pd).toBe('OFF');
+
+    const sigTh = sanitizeSignalEngineThresholds({ mlBuyMinProbPct: 200, maxDumpRiskForBuyPct: 10 });
+    expect(sigTh.mlBuyMinProbPct).toBe(90);
+    expect(sigTh.maxDumpRiskForBuyPct).toBe(25);
+
+    const scanCfg = sanitizeScannerEngineConfig({
+      discoveredPoolLimit: 9999,
+      qualityCandidatesLimit: 2,
+      topOpportunitiesLimit: 18,
+    });
+    expect(scanCfg.discoveredPoolLimit).toBe(500);
+    expect(scanCfg.qualityCandidatesLimit).toBe(10);
+    expect(scanCfg.topOpportunitiesLimit).toBe(18);
+  });
+
+  it('discovers a broad multi-token universe (>=12 Solana pairs across <=3d Shitcoin and >30d Memecoin cohorts)', async () => {
+    const universe = await fetchDexScreenerScannerUniverse(false, 120);
+    expect(universe.length).toBeGreaterThanOrEqual(12);
+
+    const now = Date.now();
+    const hasShitcoin = universe.some(
+      (t) => (now - t.pair_created_at_ms) / 60_000 <= SHITCOIN_MAX_AGE_MINUTES
+    );
+    const hasMemecoin = universe.some(
+      (t) => (now - t.pair_created_at_ms) / 60_000 > MEMECOIN_MIN_AGE_MINUTES
+    );
+    expect(hasShitcoin).toBe(true);
+    expect(hasMemecoin).toBe(true);
+  });
 });
+

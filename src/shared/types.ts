@@ -16,6 +16,121 @@ export interface TokenClassClassification {
   classification_reason: string;
 }
 
+export type PreDumpRiskLevel =
+  | 'NORMAL'
+  | 'EARLY DUMP RISK'
+  | 'HIGH DUMP RISK'
+  | 'CONFIRMED DUMP';
+
+export interface PreDumpAssessment {
+  risk_pct: number; // 0..100
+  level: PreDumpRiskLevel;
+  sequence_count: number;
+  active_conditions: string[];
+  disclaimer: string;
+}
+
+export type LiveSignalType =
+  | 'BUY'
+  | 'HOLD'
+  | 'WAIT'
+  | 'CONFIRMATION REQUIRED'
+  | 'DUMP RISK'
+  | 'PARTIAL SELL'
+  | 'SELL';
+
+export interface SignalRiskGate {
+  id: string;
+  label: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface SignalDecisionFlow {
+  ml_prediction: {
+    direction: 'BUY' | 'NEUTRAL' | 'BEARISH';
+    buy_probability_pct: number;
+    sell_probability_pct: number;
+    confidence_pct: number;
+  };
+  bullish_factors: string[];
+  bearish_factors: string[];
+  dump_risk: PreDumpAssessment;
+  market_regime: string;
+  risk_gates: SignalRiskGate[];
+  decision_status: 'ALLOWED' | 'BUY BLOCKED' | 'DOWNGRADED' | 'SELL CONFIRMED';
+  final_signal: LiveSignalType;
+  blocked_or_changed_reason?: string;
+  snapshot_timestamp_ms: number;
+  snapshot_values: {
+    price_usd: number;
+    price_change_5m: number;
+    price_change_1h: number;
+    buy_share_5m_pct: number;
+    rsi14: number;
+    ema9: number;
+    ema21: number;
+    vwap: number;
+    liquidity_usd: number;
+  };
+}
+
+export interface LiveSignalState {
+  signal: LiveSignalType;
+  confidence_pct: number;
+  updated_at_ms: number;
+  updated_at_iso: string;
+  trigger_source: 'INITIAL_ANALYSIS' | 'LIVE_MARKET_TICK';
+  composite_score: number;
+  reasons: Array<{ direction: '+' | '-'; text: string }>;
+  pre_dump: PreDumpAssessment;
+  decision_flow: SignalDecisionFlow;
+  entry_context: string;
+  stop_context: string;
+  target_context: string;
+}
+
+export interface ScannerFunnelStats {
+  discovered_count: number;
+  valid_count: number;
+  passed_filters_count: number;
+  quality_candidates_count: number;
+  top_displayed_count: number;
+  sources_used: string[];
+  last_scan_ms: number;
+}
+
+export interface RemovedScannerTokenNotice {
+  address: string;
+  symbol: string;
+  reason: string;
+  replaced_by_symbol?: string;
+}
+
+export interface MlLearningActivityEvent {
+  id: string;
+  timestamp: string;
+  action: string;
+  technical_title: string;
+  technical_detail: string;
+  simple_title: string;
+  simple_detail: string;
+}
+
+export interface DailyLearningSummary {
+  date_label: string;
+  new_observations: number;
+  verified_outcomes: number;
+  rejected_observations: number;
+  features_updated: number;
+  candidate_models: number;
+  promoted_model: string;
+  main_learning: Array<{
+    technical: string;
+    explain_to_me: string;
+  }>;
+}
+
 export type Horizon = '4M' | '15M' | '1H' | '4H' | '24H';
 
 export type ChartTimeframe = '1S' | '1M' | '5M' | '15M' | '1H' | '4H' | '24H';
@@ -555,6 +670,7 @@ export interface BriggScorePanelData {
   market_regime: MarketRegimeType;
   action_state: ActionState;
   classification: TokenClassClassification;
+  live_signal: LiveSignalState;
   no_trade: NoTradeEvaluation;
   model_outputs: {
     momentum_score: number;
@@ -734,6 +850,10 @@ export interface ScannerTokenSummary {
   execution_quality: number;
   action_state: ActionState;
   classification: TokenClassClassification;
+  pre_dump_level?: PreDumpRiskLevel;
+  pre_dump_risk_pct?: number;
+  live_signal?: LiveSignalType;
+  decision_status?: SignalDecisionFlow['decision_status'];
   ranking_explanation: string;
   has_source_conflict: boolean;
   data_status: DataStatus;

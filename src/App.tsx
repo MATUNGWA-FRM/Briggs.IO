@@ -74,6 +74,24 @@ import {
   saveGlossaryEntries,
   type TerminologyEntry,
 } from './shared/terminology';
+import { evaluateLiveSignal } from './shared/liveSignalEngine';
+import {
+  loadChartAiOverlaySettings,
+  loadChartIndicatorStates,
+  loadLiveSignalSettings,
+  loadScannerEngineConfig,
+  loadSignalEngineThresholds,
+  saveChartAiOverlaySettings,
+  saveChartIndicatorStates,
+  saveLiveSignalSettings,
+  saveScannerEngineConfig,
+  saveSignalEngineThresholds,
+  type ChartAiOverlaySettings,
+  type ChartIndicatorStates,
+  type LiveSignalSettings,
+  type ScannerEngineConfig,
+  type SignalEngineThresholds,
+} from './shared/terminalSettings';
 import type {
   AlertEvent,
   AlertRule,
@@ -83,8 +101,11 @@ import type {
   Horizon,
   HumanOverrideRecord,
   LiveMarketTick,
+  LiveSignalState,
   LiveTradeEvent,
   MarketRegimeState,
+  RemovedScannerTokenNotice,
+  ScannerFunnelStats,
   ScannerTokenSummary,
   SocialMentionEvent,
   TokenFullAnalysis,
@@ -123,6 +144,7 @@ export default function App() {
   const [preset, setPreset] = useState<BriggFilterPreset['id']>('GENERAL');
   const [sortBy, setSortBy] = useState('opportunity');
   const [scannerTokens, setScannerTokens] = useState<ScannerTokenSummary[]>([]);
+  const [removedTokens, setRemovedTokens] = useState<RemovedScannerTokenNotice[]>([]);
   const [scannerLoading, setScannerLoading] = useState(true);
   const [autoRefreshSec, setAutoRefreshSec] = useState<0 | 15 | 30 | 60>(30);
   const [countdownSec, setCountdownSec] = useState<number>(30);
@@ -145,6 +167,62 @@ export default function App() {
   const [pricePulse, setPricePulse] = useState<'UP' | 'DOWN' | 'FLAT'>('FLAT');
   const prevPriceRef = useRef<number>(0);
 
+  const [liveSignalSettings, setLiveSignalSettings] = useState<LiveSignalSettings>(() =>
+    loadLiveSignalSettings()
+  );
+  const [signalThresholds, setSignalThresholds] = useState<SignalEngineThresholds>(() =>
+    loadSignalEngineThresholds()
+  );
+  const [indicatorStates, setIndicatorStates] = useState<ChartIndicatorStates>(() =>
+    loadChartIndicatorStates()
+  );
+  const [scannerConfig, setScannerConfig] = useState<ScannerEngineConfig>(() =>
+    loadScannerEngineConfig()
+  );
+  const [scannerFunnel, setScannerFunnel] = useState<ScannerFunnelStats | undefined>(undefined);
+  const [aiOverlaySettings, setAiOverlaySettings] = useState<ChartAiOverlaySettings>(() =>
+    loadChartAiOverlaySettings()
+  );
+  const [liveSignal, setLiveSignal] = useState<LiveSignalState | null>(null);
+
+  const selectedAddressRef = useRef<string>(selectedAddress);
+  const analysisRef = useRef<TokenAnalysisResponse | null>(null);
+  const modeRef = useRef<BriggMode>(mode);
+  const prevScannerModeRef = useRef<BriggMode | null>(null);
+  const liveSignalMetricsRef = useRef<{
+    ema9: number;
+    ema21: number;
+    vwap: number;
+    rsi14: number;
+    avgGain: number;
+    avgLoss: number;
+    lastPrice: number;
+    support: number;
+    resistance: number;
+  }>({
+    ema9: 0,
+    ema21: 0,
+    vwap: 0,
+    rsi14: 50,
+    avgGain: 0.0001,
+    avgLoss: 0.0001,
+    lastPrice: 0,
+    support: 0,
+    resistance: 0,
+  });
+
+  useEffect(() => {
+    selectedAddressRef.current = selectedAddress;
+  }, [selectedAddress]);
+
+  useEffect(() => {
+    analysisRef.current = analysis;
+  }, [analysis]);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
   const [copiedCa, setCopiedCa] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState<BubbleMapNode | null>(null);
   const [recordingPred, setRecordingPred] = useState(false);
@@ -165,7 +243,7 @@ export default function App() {
   const [toastNowMs, setToastNowMs] = useState<number>(() => Date.now());
   const lastBuyToastMsRef = useRef<number>(0);
 
-  // Persist layout, theme colors, glossary & notification preferences to localStorage
+  // Persist layout, theme colors, glossary, notification & Live Signal preferences to localStorage
   useEffect(() => {
     saveLayout(layout);
   }, [layout]);
@@ -182,6 +260,26 @@ export default function App() {
   useEffect(() => {
     saveNotificationPrefs(notificationPrefs);
   }, [notificationPrefs]);
+
+  useEffect(() => {
+    saveLiveSignalSettings(liveSignalSettings);
+  }, [liveSignalSettings]);
+
+  useEffect(() => {
+    saveSignalEngineThresholds(signalThresholds);
+  }, [signalThresholds]);
+
+  useEffect(() => {
+    saveChartIndicatorStates(indicatorStates);
+  }, [indicatorStates]);
+
+  useEffect(() => {
+    saveScannerEngineConfig(scannerConfig);
+  }, [scannerConfig]);
+
+  useEffect(() => {
+    saveChartAiOverlaySettings(aiOverlaySettings);
+  }, [aiOverlaySettings]);
 
   // Auto-update Glossary whenever new trading/slang words appear in live analysis or social feeds
   const syncGlossaryFromContext = useCallback(() => {
@@ -363,6 +461,11 @@ export default function App() {
           horizon,
           preset,
           sortBy,
+          discoveredLimit: String(scannerConfig.discoveredPoolLimit),
+          qualityLimit: String(scannerConfig.qualityCandidatesLimit),
+          topLimit: String(scannerConfig.topOpportunitiesLimit),
+          minLiquidity: String(scannerConfig.minLiquidityUsd),
+          maxStaleSeconds: String(scannerConfig.maxStaleSeconds),
         });
         if (searchQuery) params.set('q', searchQuery);
         if (forceRefresh) params.set('refresh', 'true');
@@ -386,9 +489,23 @@ export default function App() {
           }
 
           setScannerTokens(incoming);
+          setRemovedTokens(Array.isArray(data.removed_tokens) ? data.removed_tokens : []);
           setRegime(data.regime);
+          if (data.funnel) setScannerFunnel(data.funnel);
+          const modeChanged = prevScannerModeRef.current !== mode;
+          prevScannerModeRef.current = mode;
+
           if (searchQuery && incoming.length > 0) {
             setSelectedAddress(incoming[0].address);
+          } else if (modeChanged && incoming.length > 0) {
+            const currentAddr = selectedAddressRef.current;
+            const inList = incoming.some((t) => t.address === currentAddr);
+            const currentClassifiedMatches =
+              analysisRef.current?.forensics?.address === currentAddr &&
+              analysisRef.current?.score_panel?.classification?.classified_mode === mode;
+            if (!inList && !currentClassifiedMatches) {
+              setSelectedAddress(incoming[0].address);
+            }
           }
         }
       } catch (err) {
@@ -400,7 +517,7 @@ export default function App() {
         }
       }
     },
-    [mode, horizon, preset, sortBy, autoRefreshSec]
+    [mode, horizon, preset, sortBy, autoRefreshSec, scannerConfig]
   );
 
   const loadSocialFeed = useCallback(async (targetAddress = selectedAddress) => {
@@ -439,7 +556,23 @@ export default function App() {
         return;
       }
       setAnalysis(data);
-      prevPriceRef.current = data.forensics?.price_usd || 0;
+      setLiveSignal(data.score_panel?.live_signal ?? null);
+      const candles = data.chart?.candles || [];
+      const lastCandle = candles[candles.length - 1];
+      const spot = data.forensics?.price_usd || lastCandle?.close || 0;
+      const rsiInit = lastCandle?.rsi14 ?? 50;
+      liveSignalMetricsRef.current = {
+        ema9: lastCandle?.ema9 ?? spot,
+        ema21: lastCandle?.ema21 ?? spot,
+        vwap: lastCandle?.vwap ?? spot,
+        rsi14: rsiInit,
+        avgGain: Math.max(spot * 0.002, (rsiInit / 100) * spot * 0.01),
+        avgLoss: Math.max(spot * 0.002, ((100 - rsiInit) / 100) * spot * 0.01),
+        lastPrice: spot,
+        support: data.chart?.support_levels?.[0] ?? spot * 0.94,
+        resistance: data.chart?.resistance_levels?.[0] ?? spot * 1.08,
+      };
+      prevPriceRef.current = spot;
       setSelectedWallet(null);
       loadAlerts();
       loadSocialFeed(selectedAddress);
@@ -495,6 +628,68 @@ export default function App() {
         }
         prevPriceRef.current = tick.price_usd;
 
+        const activeAnalysis = analysisRef.current;
+        if (activeAnalysis && activeAnalysis.forensics.address === tick.address) {
+          const m = liveSignalMetricsRef.current;
+          const prevP = m.lastPrice > 0 ? m.lastPrice : tick.price_usd;
+          const delta = tick.price_usd - prevP;
+          const gain = delta > 0 ? delta : 0;
+          const loss = delta < 0 ? -delta : 0;
+          const nextAvgGain = (m.avgGain * 13 + gain) / 14;
+          const nextAvgLoss = (m.avgLoss * 13 + loss) / 14;
+          const rs = nextAvgLoss > 0 ? nextAvgGain / nextAvgLoss : 2;
+          const nextRsi = Math.max(12, Math.min(88, 100 - 100 / (1 + rs)));
+          const nextEma9 = (m.ema9 > 0 ? m.ema9 : tick.price_usd) * (7 / 9) + tick.price_usd * (2 / 9);
+          const nextEma21 = (m.ema21 > 0 ? m.ema21 : tick.price_usd) * (19 / 21) + tick.price_usd * (2 / 21);
+          const nextVwap = (m.vwap > 0 ? m.vwap : tick.price_usd) * 0.96 + tick.price_usd * 0.04;
+          liveSignalMetricsRef.current = {
+            ...m,
+            ema9: nextEma9,
+            ema21: nextEma21,
+            vwap: nextVwap,
+            rsi14: nextRsi,
+            avgGain: nextAvgGain,
+            avgLoss: nextAvgLoss,
+            lastPrice: tick.price_usd,
+          };
+          const win1h = activeAnalysis.volume.windows.find((w) => w.timeframe === '1H');
+          const nextSignal = evaluateLiveSignal({
+            mode: modeRef.current,
+            price_usd: tick.price_usd,
+            price_change_5m: tick.price_change_5m,
+            price_change_1h: tick.price_change_1h,
+            buys_5m: tick.buys_5m,
+            sells_5m: tick.sells_5m,
+            buys_1h: win1h?.buy_count ?? Math.max(tick.buys_5m * 6, 30),
+            sells_1h: win1h?.sell_count ?? Math.max(tick.sells_5m * 6, 25),
+            liquidity_usd: tick.liquidity_usd,
+            liquidity_growth_1h_pct: activeAnalysis.liquidity.liquidity_growth_1h_pct,
+            liquidity_change_during_dumps_pct: activeAnalysis.liquidity.liquidity_change_during_dumps_pct,
+            volume_acceleration_pct: activeAnalysis.volume.volume_acceleration_pct,
+            volatility_pct: activeAnalysis.chart.volatility_pct,
+            rsi14: nextRsi,
+            ema9: nextEma9,
+            ema21: nextEma21,
+            vwap: nextVwap,
+            support_level: m.support,
+            resistance_level: m.resistance,
+            execution_quality: activeAnalysis.score_panel.execution_quality,
+            sniper_pct: activeAnalysis.holders.sniper_analysis.supply_pct,
+            bundle_pct: activeAnalysis.holders.bundle_analysis.combined_supply_pct,
+            social_momentum: activeAnalysis.social.social_momentum_score,
+            market_regime_score: activeAnalysis.features.market_regime_encoded,
+            market_regime_label: activeAnalysis.score_panel.market_regime,
+            wash_trading_risk: activeAnalysis.volume.anomalies.wash_trading_risk,
+            bot_activity_score: activeAnalysis.volume.anomalies.bot_activity_score,
+            ml_buy_probability_override:
+              activeAnalysis.score_panel.live_signal?.decision_flow.ml_prediction.buy_probability_pct,
+            thresholds: signalThresholds,
+            trigger_source: 'LIVE_MARKET_TICK',
+            timestamp_ms: tick.timestamp_ms,
+          });
+          setLiveSignal(nextSignal);
+        }
+
         if (tick.trade) {
           setRecentTrades((prev) => [tick.trade!, ...prev].slice(0, 45));
           if (tick.trade.side === 'BUY') {
@@ -535,7 +730,7 @@ export default function App() {
       es.removeEventListener('tick', onTick);
       es.close();
     };
-  }, [selectedAddress, timeframe, streaming, activeView, socialStreaming, notificationPrefs.popupsEnabled]);
+  }, [selectedAddress, timeframe, streaming, activeView, socialStreaming, notificationPrefs.popupsEnabled, signalThresholds]);
 
   const handleTokenSearch = (queryOrAddress: string) => {
     const clean = queryOrAddress.trim();
@@ -656,6 +851,7 @@ export default function App() {
           {layout.showScanner && (
             <>
               <TokenScanner
+                mode={mode}
                 tokens={scannerTokens}
                 selectedAddress={selectedAddress}
                 onSelectToken={(addr) => setSelectedAddress(addr)}
@@ -669,7 +865,9 @@ export default function App() {
                 onAutoRefreshChange={setAutoRefreshSec}
                 countdownSec={countdownSec}
                 newAddresses={newAddresses}
+                removedTokens={removedTokens}
                 regime={regime}
+                funnel={scannerFunnel}
                 widthPx={layout.leftWidth}
                 onCollapse={() => handleTogglePanel('showScanner')}
               />
@@ -878,6 +1076,12 @@ export default function App() {
                       spotPriceUsd={analysis.forensics.price_usd}
                       heightPx={layout.chartHeight}
                       onCollapse={() => handleTogglePanel('showChart')}
+                      liveSignal={liveSignal ?? analysis.score_panel.live_signal}
+                      liveSignalSettings={liveSignalSettings}
+                      aiOverlay={aiOverlaySettings}
+                      onChangeAiOverlay={setAiOverlaySettings}
+                      indicatorStates={indicatorStates}
+                      onChangeIndicatorStates={setIndicatorStates}
                     />
 
                     {/* Horizontal Drag Handle between Chart & Lower Workspace */}
@@ -1031,6 +1235,12 @@ export default function App() {
                               marketCapUsd={analysis.forensics.market_cap_usd}
                               spotPriceUsd={analysis.forensics.price_usd}
                               heightPx={360}
+                              liveSignal={liveSignal ?? analysis.score_panel.live_signal}
+                              liveSignalSettings={liveSignalSettings}
+                              aiOverlay={aiOverlaySettings}
+                              onChangeAiOverlay={setAiOverlaySettings}
+                              indicatorStates={indicatorStates}
+                              onChangeIndicatorStates={setIndicatorStates}
                             />
                           )}
                           {layout.activeTab === 'ANALYSIS' && (
@@ -1146,6 +1356,9 @@ export default function App() {
                 recording={recordingPred}
                 widthPx={layout.rightWidth}
                 onCollapse={() => handleTogglePanel('showScorePanel')}
+                onSwitchMode={setMode}
+                liveSignal={liveSignal ?? analysis.score_panel.live_signal}
+                liveSignalSettings={liveSignalSettings}
               />
             </>
           )}
@@ -1208,6 +1421,19 @@ export default function App() {
         onChangeNotificationPrefs={setNotificationPrefs}
         activeBuyBarCount={buyNotifications.length}
         onClearAllBuyNotifications={() => setBuyNotifications([])}
+        liveSignalSettings={liveSignalSettings}
+        onChangeLiveSignalSettings={setLiveSignalSettings}
+        signalThresholds={signalThresholds}
+        onChangeSignalThresholds={setSignalThresholds}
+        indicatorStates={indicatorStates}
+        onChangeIndicatorStates={setIndicatorStates}
+        scannerConfig={scannerConfig}
+        onChangeScannerConfig={setScannerConfig}
+        scannerFunnel={scannerFunnel}
+        diagnosticSignal={liveSignal ?? analysis?.score_panel.live_signal}
+        activeSymbol={analysis?.forensics.symbol}
+        mlModelVersion={analysis?.score_panel.model_outputs.model_version}
+        onOpenMlCenter={() => setActiveView('MODEL_CENTER')}
       />
 
       <BuyNotificationStack

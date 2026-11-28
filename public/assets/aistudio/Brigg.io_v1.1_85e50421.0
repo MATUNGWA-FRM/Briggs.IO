@@ -1,0 +1,1086 @@
+BRIGG.AI V1 — TERMINAL & ML CENTER UPDATE
+
+Live Signal Layer, Interactive Terminal Guide, Advanced Chart, Token Lifecycle & ML Learning Center
+
+IMPORTANT IMPLEMENTATION RULE
+
+This update must extend the existing Brigg.AI application. Do not redesign the existing Terminal or ML Center from scratch.
+
+Preserve the current functionality, layout, ML terminology, scoring system, model versioning, validation gates, audit logs, token scanner, chart data pipeline, and existing Action State behavior unless a requirement below explicitly changes them.
+
+The existing Brigg application already contains concepts such as:
+
+- HIGH-RISK OPPORTUNITY
+- WAIT
+- NO TRADE
+- Opportunity Score
+- Risk Score
+- Confidence
+- Execution Quality
+- Calibrated Probability
+- Market Regime
+- Why Opportunity Exists
+- Pump/Dump detection
+- ML model versions
+- Training samples
+- New observations
+- Feature versions
+- Out-of-Time Validation
+- ROC-AUC
+- PR-AUC
+- F1 / Precision
+- Brier Score
+- False Positive Rate
+- Sharpe / Profit Factor
+- Model promotion
+- Model rollback
+
+These existing concepts must remain functional.
+
+---
+
+PART 1 — TERMINAL UPDATE
+
+1. OPTIONAL LIVE SIGNAL LAYER
+
+Add a new Live Signal layer to the Terminal.
+
+This must be a separate layer from the existing ML Action State.
+
+DO NOT replace the existing Action State.
+
+The current Action State must continue displaying classifications such as:
+
+- HIGH-RISK OPPORTUNITY
+- WAIT
+- NO TRADE
+- other existing ML classifications
+
+For example, the existing Terminal may continue showing:
+
+ACTION STATE
+
+HIGH-RISK OPPORTUNITY
+
+Opportunity       77/100
+Risk              29/100
+Confidence        72%
+Execution Quality 86/100
+
+Do not convert:
+
+HIGH-RISK OPPORTUNITY
+
+into:
+
+BUY
+
+These are different concepts.
+
+---
+
+2. LIVE SIGNAL MUST BE AN OPTIONAL USER-CONTROLLED FEATURE
+
+Add a separate Live Signal feature that users can turn ON or OFF.
+
+Default behavior should preserve the existing Terminal appearance if the feature is disabled.
+
+Setting
+
+Add:
+
+Settings
+→ Terminal
+→ Live Signal
+
+with:
+
+Live Trading Signal       [ ON / OFF ]
+
+Additional controls:
+
+Show Signal on Action Panel     [ ON / OFF ]
+Show Signal on Chart            [ ON / OFF ]
+Show Signal Confidence          [ ON / OFF ]
+Show Signal Explanation         [ ON / OFF ]
+
+When Live Signal is OFF:
+
+Do not show BUY/SELL/PARTIAL SELL/HOLD on the Terminal or chart.
+
+The existing Action State remains exactly as before.
+
+---
+
+3. LIVE SIGNAL TYPES
+
+When Live Signal is enabled, Brigg may display:
+
+BUY
+HOLD
+PARTIAL SELL
+SELL
+
+The signal must be generated from current market conditions and the existing Brigg analysis/ML pipeline.
+
+It must not simply translate:
+
+HIGH-RISK OPPORTUNITY → BUY
+
+or:
+
+WAIT → SELL
+
+The Live Signal must be an independent decision layer.
+
+---
+
+4. LIVE SIGNAL EXAMPLE
+
+Example:
+
+ACTION STATE
+
+HIGH-RISK OPPORTUNITY
+
+Opportunity       77/100
+Risk              29/100
+Confidence        72%
+Execution Quality 86/100
+
+────────────────────────
+
+LIVE SIGNAL
+
+BUY
+
+Signal Confidence: 78%
+
+Another valid state:
+
+ACTION STATE
+
+HIGH-RISK OPPORTUNITY
+
+Opportunity       77/100
+Risk              29/100
+
+────────────────────────
+
+LIVE SIGNAL
+
+HOLD
+
+Signal Confidence: 64%
+
+Another:
+
+ACTION STATE
+
+HIGH-RISK OPPORTUNITY
+
+Opportunity       77/100
+Risk              29/100
+
+────────────────────────
+
+LIVE SIGNAL
+
+PARTIAL SELL
+
+Signal Confidence: 82%
+
+The existing Action State and the Live Signal must be allowed to show different information because they represent different analytical layers.
+
+---
+
+5. LIVE SIGNAL MUST UPDATE WITH LIVE MARKET DATA
+
+The Live Signal must be dynamic.
+
+Whenever new valid market observations arrive, Brigg should reevaluate the current signal.
+
+Relevant inputs may include the existing Brigg features such as:
+
+- momentum
+- volume
+- liquidity
+- wallet activity
+- social signals
+- execution conditions
+- market regime
+- buy/sell flow
+- price movement
+- volatility
+- support/resistance
+- other validated features already available to the Brigg model
+
+The signal should not update randomly or on a fake timer.
+
+It must respond to actual changes in the underlying market data.
+
+---
+
+6. SIGNAL TIMESTAMP
+
+Every Live Signal should have a timestamp or update indicator.
+
+Example:
+
+LIVE SIGNAL
+BUY
+
+Confidence: 78%
+Updated: 12:41:08
+
+When the market changes:
+
+LIVE SIGNAL
+HOLD
+
+Confidence: 65%
+Updated: 12:41:18
+
+The UI should make it clear that the signal is live.
+
+---
+
+7. LIVE SIGNAL EXPLANATION
+
+When enabled, provide a concise explanation of why the current signal exists.
+
+Example:
+
+LIVE SIGNAL
+
+BUY
+
+Confidence: 78%
+
+Why:
++ Buy flow increasing
++ Momentum improving
++ Liquidity remains healthy
++ Price above short-term trend
+− Volatility remains elevated
+
+The explanation must be based on the actual features/data supporting the current signal.
+
+Do not generate generic explanations that are disconnected from the model.
+
+---
+
+8. LIVE SIGNAL ON CHART
+
+If:
+
+Show Signal on Chart = ON
+
+display signal markers directly on the live chart.
+
+Examples:
+
+BUY
+  ↓
+🟢
+
+PARTIAL SELL
+      ↓
+     🟠
+
+SELL
+ ↓
+🔴
+
+Markers must contain timestamp information.
+
+Example:
+
+BUY
+12:42:18
+
+The chart should preserve the existing chart functionality.
+
+---
+
+9. DO NOT OVERLOAD THE CHART
+
+The existing screenshot already contains multiple chart annotations such as:
+
+- PUMP IN
+- PUMP OUT
+- DUMP OUT
+- price labels
+- support
+- resistance
+- indicators
+- volume
+- other objects
+
+Do not make the chart unreadable by adding excessive Live Signal labels.
+
+Implement:
+
+Chart Settings
+→ AI Overlay
+
+with controls for:
+
+Live Signal
+AI Explanation
+Pump/Dump Labels
+Support/Resistance
+ML Annotations
+Confidence Labels
+
+Each can be independently shown or hidden where technically appropriate.
+
+---
+
+PART 2 — ADVANCED LIVE CHART
+
+10. EXPANDABLE FULLSCREEN CHART
+
+Add a clearly visible:
+
+⛶ Expand Chart
+
+button.
+
+When activated, the chart must expand into a large/fullscreen viewing mode.
+
+The user must not need to continuously zoom the browser or physically move farther away from the screen to understand the chart.
+
+The expanded chart should maximize usable screen space.
+
+---
+
+11. FULLSCREEN CHART MUST REMAIN LIVE
+
+Expanding the chart must not create a separate static chart.
+
+The expanded chart must continue receiving the same live market data stream as the normal Terminal.
+
+The following must continue working:
+
+- live candles
+- price updates
+- volume
+- indicators
+- AI markers
+- timeframes
+- chart objects
+- support/resistance
+- other active chart calculations
+
+---
+
+12. TRADINGVIEW-STYLE CHART CONTROLS
+
+Improve the chart so users can work with it like a professional trading chart.
+
+Where supported by the underlying charting technology, include:
+
+Chart types
+
+- Candlestick
+- Line
+- Area
+
+Timeframes
+
+- 1S
+- 1M
+- 5M
+- 15M
+- 1H
+- 4H
+- 24H
+
+Also support the existing timeframe options already present in Brigg.
+
+Indicators
+
+Where supported:
+
+- EMA 9
+- EMA 21
+- VWAP
+- Bollinger Bands
+- RSI
+- MACD
+- Volume
+
+Chart tools
+
+- Crosshair
+- Zoom
+- Pan
+- Reset chart
+- Price measurement
+- Percentage measurement
+- Horizontal line
+- Trend line
+- Other standard drawing objects supported by the chart library
+
+---
+
+13. OBJECT MANAGEMENT
+
+Improve the existing:
+
+Objects (0)
+
+system.
+
+Users should be able to:
+
+- add objects
+- remove objects
+- hide/show objects
+- manage objects
+- clear objects
+- control object visibility
+
+Objects should remain attached to the correct chart/time/price context.
+
+---
+
+14. LIVE DATA SOURCE INTEGRATION
+
+The chart must remain connected to the same live token data source used by Brigg.
+
+Do not create a fake chart with simulated candles.
+
+When the token data source updates:
+
+Data Source
+      ↓
+Live Market Data
+      ↓
+Brigg Processing
+      ↓
+Chart
+      ↓
+ML Analysis
+      ↓
+Optional Live Signal
+
+The chart and analysis must remain synchronized.
+
+---
+
+PART 3 — TOKEN LIFECYCLE & SCANNER
+
+15. AUTOMATIC TOKEN REMOVAL
+
+If a token is no longer valid for active analysis, Brigg must remove it from the active analysis list immediately or after a properly configured validation/stale-data threshold.
+
+Possible conditions include:
+
+- data feed becomes stale
+- pair becomes invalid
+- token no longer satisfies scanner criteria
+- liquidity becomes invalid
+- required market data disappears
+- token is no longer available from the active data source
+
+Do not remove a token merely because it has had a few seconds of low activity.
+
+Use a proper stale-data/validation mechanism.
+
+---
+
+16. AUTOMATIC REPLACEMENT
+
+When an active token is removed, the scanner should allow another qualifying token to enter the available analysis slot.
+
+Example:
+
+TOKEN A
+Active
+   ↓
+Data becomes invalid
+   ↓
+Remove TOKEN A
+   ↓
+Scanner searches qualifying tokens
+   ↓
+TOKEN B enters
+
+The scanner should continuously maintain the active analysis universe according to the configured criteria.
+
+---
+
+PART 4 — TERMINAL GUIDE / MANUAL
+
+17. ADD TERMINAL GUIDE TO SETTINGS
+
+Create:
+
+Settings
+→ Terminal Guide
+
+This is an important product feature, not a small tooltip system.
+
+The guide must teach a beginner how to use and understand the entire Terminal.
+
+---
+
+18. TERMINAL GUIDE STRUCTURE
+
+Create sections such as:
+
+01. Scanner
+02. Token Header
+03. Token Status
+04. Chart
+05. Timeframes
+06. Indicators
+07. Chart Objects
+08. Action State
+09. Live Signal
+10. Opportunity Score
+11. Risk Score
+12. Confidence
+13. Execution Quality
+14. Calibrated Probability
+15. Market Regime
+16. Why Opportunity Exists
+17. Pump/Dump Analysis
+18. Buy/Sell Flow
+19. Liquidity
+20. Wallet Analysis
+21. Fullscreen Chart
+22. Alerts
+
+---
+
+19. ILLUSTRATED TERMINAL GUIDE
+
+Each major Terminal element must have:
+
+Illustration
+↓
+What it is
+↓
+What it means
+↓
+How Brigg calculates/uses it
+↓
+Example
+↓
+What the user should pay attention to
+
+Do not make the guide a dictionary of definitions.
+
+It should actually teach the user how to read the Terminal.
+
+---
+
+20. EXAMPLE — OPPORTUNITY SCORE GUIDE
+
+Example:
+
+OPPORTUNITY SCORE
+77/100
+
+Explain:
+
+What is it?
+
+A composite measure describing how favorable the
+current setup appears according to Brigg's configured
+analysis.
+
+The score may consider factors such as:
+
+• Momentum
+• Volume
+• Liquidity
+• Wallet activity
+• Social activity
+• Execution conditions
+• Market regime
+
+Then explain that a high Opportunity Score does not automatically mean BUY.
+
+This distinction must be explicitly taught.
+
+---
+
+21. EXAMPLE — LIVE SIGNAL GUIDE
+
+Explain:
+
+LIVE SIGNAL
+
+BUY / HOLD / PARTIAL SELL / SELL
+
+Explain:
+
+«Live Signal is a separate, optional real-time directional layer that evaluates current market conditions. It is not the same as the Action State or Opportunity Score.»
+
+This distinction must be visible to beginners.
+
+---
+
+22. SHORT VIDEO GUIDES
+
+Add optional short tutorial videos.
+
+Suggested topics:
+
+▶ How to use the Brigg Terminal
+▶ How to read the scanner
+▶ How to read the chart
+▶ How to use chart indicators
+▶ How to understand Action State
+▶ How Live Signal works
+▶ How to understand Opportunity and Risk
+▶ How Brigg analyzes a token
+
+Videos should be short and focused.
+
+Provide written instructions alongside the videos.
+
+Do not make videos the only source of documentation.
+
+---
+
+PART 5 — ML CENTER UPDATE
+
+23. ADD ML HELP / GUIDE SECTION
+
+Add:
+
+ML Center
+→ Help / Guide
+
+This must be designed specifically for beginners.
+
+The user should be able to understand what Brigg's ML system is doing without already being an ML engineer.
+
+---
+
+24. ML GUIDE TOPICS
+
+Include at minimum:
+
+01. What is the Brigg Model?
+02. What is a Feature?
+03. What is Training Data?
+04. What is an Observation?
+05. What is Validation?
+06. What is Out-of-Time Validation?
+07. What is Temporal Leakage?
+08. What is Calibration?
+09. What is Confidence?
+10. What is Precision?
+11. What is Recall?
+12. What is F1 Score?
+13. What is ROC-AUC?
+14. What is PR-AUC?
+15. What is Brier Score?
+16. What is False Positive Rate?
+17. What is Drawdown?
+18. What is a Model Version?
+19. What does Promoted mean?
+20. What does Rejected mean?
+21. How does Rollback work?
+22. How does Brigg Learn?
+
+---
+
+25. ILLUSTRATED ML GUIDE
+
+Each concept should have an illustration or visual explanation where appropriate.
+
+Example:
+
+MARKET DATA
+     ↓
+FEATURES
+     ↓
+MODEL
+     ↓
+PREDICTION
+     ↓
+VALIDATION
+     ↓
+OUTCOME
+     ↓
+LEARNING
+
+Explain every step in simple natural language.
+
+Technical terminology should remain available for advanced users.
+
+---
+
+PART 6 — ML LEARNING ACTIVITY
+
+26. SHOW ACTUAL ML LEARNING ACTIVITY
+
+Add a visible ML learning/activity section.
+
+The system should show what the ML pipeline is actually doing.
+
+Example:
+
+BRIGG LEARNING ACTIVITY
+
+11:42:08
+New market observations received
++9 observations
+
+11:42:15
+Feature extraction completed
+Feature version: f_v2.1
+
+11:42:22
+Outcome verification completed
+7/9 observations verified
+
+11:42:30
+Model evaluation completed
+
+11:42:36
+Calibration updated
+
+11:42:41
+Candidate model passed validation gate
+
+11:42:45
+Model v1.10 promoted
+
+Do not use fake animations or fabricated learning events.
+
+The activity feed must reflect actual system events.
+
+---
+
+27. TECHNICAL MODE ↔ NATURAL LANGUAGE MODE
+
+Add a switch:
+
+VIEW MODE
+
+[ Technical ] [ Explain to Me ]
+
+Technical mode
+
+Show ML terminology and numerical information.
+
+Example:
+
+Feature: momentum_5m
+Weight: 0.203
+Contribution: +0.14
+Model: v1.10
+Calibration: Platt
+Validation: OOT
+
+Explain to Me mode
+
+Translate the technical information into understandable natural language.
+
+Example:
+
+Momentum is currently one of the strongest
+positive factors in this analysis.
+
+It contributes approximately 20.3% to the
+feature importance currently displayed by the model.
+
+The user must be able to switch between these modes at any time.
+
+---
+
+28. DAILY ML LEARNING SUMMARY
+
+Add a:
+
+Today's Learning
+
+section.
+
+Example:
+
+BRIGG LEARNING — 28 NOV 2026
+
+New observations       +9
+Verified outcomes      7
+Rejected observations  2
+Features updated       1
+Candidate models       1
+Promoted model         v1.10
+
+Main learning:
+
+• Recalibrated probability estimates
+• Updated ensemble weights
+• Improved validation performance
+• Reduced false-positive tendency
+
+The numbers must come from actual system data.
+
+---
+
+29. DAILY LEARNING EXPLANATION
+
+For every important technical update, provide an optional natural-language explanation.
+
+Example:
+
+Technical:
+Recalibrated Platt scaling
+
+Explain to Me:
+Brigg adjusted how its model probabilities are
+converted into calibrated confidence estimates.
+This helps make a predicted 80% probability more
+meaningful and comparable with observed outcomes.
+
+---
+
+PART 7 — ML SAFETY / VALIDATION
+
+30. PRESERVE THE EXISTING MODEL VALIDATION GATE
+
+Do not allow:
+
+NEW DATA
+   ↓
+TRAIN
+   ↓
+AUTOMATIC PRODUCTION
+
+Instead maintain a controlled pipeline:
+
+NEW DATA
+   ↓
+DATA VALIDATION
+   ↓
+FEATURE GENERATION
+   ↓
+TRAINING
+   ↓
+OUT-OF-TIME VALIDATION
+   ↓
+METRIC CHECK
+   ↓
+VALIDATION GATE
+   ↓
+CANDIDATE MODEL
+   ↓
+COMPARE WITH PRODUCTION
+   ↓
+PROMOTE / REJECT
+   ↓
+PRODUCTION
+
+---
+
+31. MODEL ROLLBACK
+
+Preserve the existing model audit log and rollback capability.
+
+Every promoted model should retain:
+
+- model version
+- date
+- feature version
+- training sample count
+- validation metrics
+- reason for promotion
+- previous production version
+- rollback availability
+
+Do not remove the current rollback mechanism.
+
+---
+
+32. NO FAKE ML CLAIMS
+
+Brigg must distinguish between:
+
+Actual ML event
+
+and:
+
+UI explanation
+
+Do not display that Brigg “learned” something unless an actual learning/training/validation event occurred.
+
+Do not fabricate:
+
+- training samples
+- model improvements
+- observations
+- validation metrics
+- model versions
+- feature importance
+- confidence
+- calibration
+- learning events
+
+All displayed ML information must be traceable to the actual Brigg data/model pipeline.
+
+---
+
+33. FINAL UX PRINCIPLE
+
+The Terminal must remain understandable for beginners while still providing advanced information for technical users.
+
+The design should follow:
+
+BEGINNER
+   ↓
+Simple Explanation
+   ↓
+Visual Guide
+   ↓
+Technical Detail
+   ↓
+Raw ML Information
+
+Do not remove technical information merely to make the UI simpler.
+
+Instead provide:
+
+Simple Mode
++
+Technical Mode
+
+---
+
+34. FINAL FUNCTIONAL RELATIONSHIP
+
+The final Brigg architecture should conceptually work like this:
+
+                    LIVE MARKET DATA
+                           │
+                           ↓
+                    DATA PROCESSING
+                           │
+                           ↓
+                    FEATURE ENGINE
+                           │
+             ┌─────────────┴─────────────┐
+             ↓                           ↓
+       ML ANALYSIS                LIVE SIGNAL ENGINE
+             │                           │
+             ↓                           ↓
+      ACTION STATE                 BUY / HOLD /
+   HIGH-RISK OPPORTUNITY          PARTIAL SELL / SELL
+      WAIT / NO TRADE
+             │                           │
+             └─────────────┬─────────────┘
+                           ↓
+                    TERMINAL UI
+                           │
+             ┌─────────────┴─────────────┐
+             ↓                           ↓
+          CHART                      ACTION PANEL
+             │
+             ↓
+       OPTIONAL AI OVERLAY
+             │
+             ↓
+       TERMINAL GUIDE
+
+The Action State and Live Signal are intentionally separate.
+
+The existing Action State remains the primary Brigg classification.
+
+The Live Signal is an optional additional layer that users can enable when they want real-time directional signals.
+
+---
+
+35. IMPLEMENTATION PRIORITY
+
+Implement in this order:
+
+Priority 1 — Live Signal
+
+- Separate Live Signal layer
+- BUY / HOLD / PARTIAL SELL / SELL
+- ON/OFF setting
+- Live updates
+- Confidence
+- Explanation
+- Chart markers
+
+Priority 2 — Advanced Chart
+
+- Expand/fullscreen
+- Zoom/pan
+- Indicators
+- Drawing tools
+- Object management
+- Live synchronization
+
+Priority 3 — Token Lifecycle
+
+- stale-data detection
+- token removal
+- automatic replacement
+- active scanner management
+
+Priority 4 — Terminal Guide
+
+- Settings → Terminal Guide
+- illustrations
+- explanations
+- examples
+- short videos
+
+Priority 5 — ML Center Guide
+
+- beginner manual
+- technical explanations
+- illustrated concepts
+- Technical / Explain-to-Me switch
+
+Priority 6 — ML Learning Activity
+
+- real learning events
+- daily learning summary
+- natural-language explanations
+- model version activity
+- validation activity
+
+---
+
+FINAL ACCEPTANCE CRITERIA
+
+The update is complete only when:
+
+1. Existing Action State classifications remain unchanged.
+2. "HIGH-RISK OPPORTUNITY", "WAIT", "NO TRADE", etc. are not replaced by BUY/SELL.
+3. Live Signal is a separate optional feature.
+4. User can turn Live Signal ON/OFF.
+5. When OFF, the Terminal looks and behaves as before regarding Action State.
+6. When ON, Live Signal can show BUY, HOLD, PARTIAL SELL, or SELL.
+7. Live Signal updates from actual current market data.
+8. Live Signal can be displayed on the chart.
+9. Live Signal has confidence and explanation options.
+10. Chart can expand to a large/fullscreen view.
+11. Chart remains live after expansion.
+12. Chart tools and objects are usable and manageable.
+13. Invalid/stale tokens are removed according to validated lifecycle rules.
+14. Replacement tokens can enter the scanner.
+15. Terminal Guide exists inside Settings.
+16. Terminal Guide contains illustrations and beginner explanations.
+17. Short video tutorials can be added to the guide.
+18. ML Help/Guide exists inside ML Center.
+19. ML concepts are explained in both technical and beginner-friendly language.
+20. ML Learning Activity displays actual system events.
+21. User can switch between Technical and Explain-to-Me views.
+22. Daily Learning Summary is available.
+23. Existing validation gates remain intact.
+24. Existing model promotion and rollback functionality remains intact.
+25. No fabricated ML events, metrics, observations, or learning claims are introduced.
+26. All new UI components are responsive and work on both desktop and mobile.
+27. Existing Brigg functionality must not be broken or removed while implementing these updates.

@@ -1,13 +1,15 @@
-import type {
-  BriggMode,
-  ChartIntelligence,
-  HolderIntelligence,
-  LiquidityIntelligence,
-  PreTradeChecklist,
-  SlippageExecutionEstimate,
-  SocialIntelligence,
-  TokenForensics,
-  VolumeIntelligence,
+import {
+  MEMECOIN_MIN_AGE_MINUTES,
+  SHITCOIN_MAX_AGE_MINUTES,
+  type BriggMode,
+  type ChartIntelligence,
+  type HolderIntelligence,
+  type LiquidityIntelligence,
+  type PreTradeChecklist,
+  type SlippageExecutionEstimate,
+  type SocialIntelligence,
+  type TokenForensics,
+  type VolumeIntelligence,
 } from '../../shared/types.ts';
 
 export function runAutomatedChecklist(params: {
@@ -97,14 +99,25 @@ export function runAutomatedChecklist(params: {
     {
       id: 'token_age',
       label: '8. Token Age Alignment',
-      passed: mode === 'SHITCOIN' ? forensics.age_minutes >= 5 : forensics.age_minutes >= 180,
+      passed:
+        mode === 'SHITCOIN'
+          ? forensics.age_minutes <= SHITCOIN_MAX_AGE_MINUTES
+          : forensics.age_minutes >= MEMECOIN_MIN_AGE_MINUTES,
       severity: 'STANDARD',
       observed_value:
         forensics.age_minutes < 120
           ? `${forensics.age_minutes}m`
-          : `${(forensics.age_minutes / 60).toFixed(1)}h`,
-      threshold: mode === 'SHITCOIN' ? '>= 5m' : '>= 3h (Memecoin Mode)',
-      explanation: 'Age compatibility for selected Brigg analytical mode',
+          : forensics.age_minutes < 2880
+          ? `${(forensics.age_minutes / 60).toFixed(1)}h`
+          : `${Math.round(forensics.age_minutes / 1440)}d`,
+      threshold:
+        mode === 'SHITCOIN'
+          ? '<= 3d (72h) Shitcoin window'
+          : '> 30d (1mo+) Memecoin window',
+      explanation:
+        mode === 'SHITCOIN'
+          ? 'Shitcoins must be newly launched (<= 3 days initial gate + ML verification)'
+          : 'Memecoins must be established (> 1 month / 30d + ML verification)',
     },
     {
       id: 'paid_vs_organic',

@@ -36,6 +36,10 @@ export const ScannerQuerySchema = z.object({
   hideNewPairs: z.enum(['true', 'false']).optional(),
   migratedOnly: z.enum(['true', 'false']).optional(),
   refresh: z.enum(['true', 'false']).optional(),
+  discoveredLimit: z.coerce.number().int().min(12).max(200).optional(),
+  qualityLimit: z.coerce.number().int().min(4).max(60).optional(),
+  topLimit: z.coerce.number().int().min(3).max(40).optional(),
+  maxStaleSeconds: z.coerce.number().int().min(10).max(3600).optional(),
 });
 
 export const TokenAnalysisQuerySchema = z.object({

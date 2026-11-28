@@ -14,9 +14,12 @@ import type {
   RiskEngineResult,
   SlippageExecutionEstimate,
   SocialIntelligence,
+  TokenForensics,
   VolumeIntelligence,
 } from '../../shared/types.ts';
+import { evaluateLiveSignal } from '../../shared/liveSignalEngine.ts';
 import { evaluateNoTradeEngine } from '../analytics/noTradeEngine.ts';
+import { classifyTokenKind } from './classifier.ts';
 import { DEFAULT_PRODUCTION_WEIGHTS, runBriggEnsembleModels, type LearnedModelWeights } from './models.ts';
 
 export function computeBriggScorePanel(params: {
@@ -24,6 +27,7 @@ export function computeBriggScorePanel(params: {
   symbol: string;
   mode: BriggMode;
   horizon: Horizon;
+  forensics: TokenForensics;
   features: EngineeredFeatures;
   liquidity: LiquidityIntelligence;
   volume: VolumeIntelligence;
@@ -43,6 +47,7 @@ export function computeBriggScorePanel(params: {
     symbol,
     mode,
     horizon,
+    forensics,
     features,
     liquidity,
     volume,
@@ -169,6 +174,57 @@ export function computeBriggScorePanel(params: {
     conflicting.push('Uptrend price action accompanied by elevated automated/repeated trade-size signals');
   }
 
+  const classification = classifyTokenKind({
+    age_minutes: forensics.age_minutes,
+    market_cap_usd: forensics.market_cap_usd,
+    liquidity_usd: liquidity.current_liquidity_usd,
+    holder_count: holders.holder_count,
+    sniper_pct: holders.sniper_analysis.supply_pct,
+    bundle_pct: holders.bundle_analysis.combined_supply_pct,
+    migration_status: forensics.migration_status,
+    volume_24h_usd: volume.reported_volume_24h_usd,
+    active_mode: mode,
+  });
+
+  const w5m = volume.windows.find((w) => w.timeframe === '5M') || volume.windows[0];
+  const w1h = volume.windows.find((w) => w.timeframe === '1H') || volume.windows[0];
+  const lastCandle = chart.candles[chart.candles.length - 1];
+  const liveSignal = evaluateLiveSignal({
+    mode,
+    price_usd: forensics.price_usd,
+    price_change_5m: forensics.price_change_5m,
+    price_change_1h: forensics.price_change_1h,
+    buys_5m: w5m?.buy_count ?? 12,
+    sells_5m: w5m?.sell_count ?? 10,
+    buys_1h: w1h?.buy_count ?? 80,
+    sells_1h: w1h?.sell_count ?? 70,
+    liquidity_usd: liquidity.current_liquidity_usd,
+    liquidity_growth_1h_pct: liquidity.liquidity_growth_1h_pct,
+    liquidity_change_during_dumps_pct: liquidity.liquidity_change_during_dumps_pct,
+    volume_acceleration_pct: volume.volume_acceleration_pct,
+    volatility_pct: chart.volatility_pct,
+    rsi14: lastCandle?.rsi14 ?? 50,
+    ema9: lastCandle?.ema9 ?? forensics.price_usd,
+    ema21: lastCandle?.ema21 ?? forensics.price_usd,
+    vwap: lastCandle?.vwap ?? forensics.price_usd,
+    support_level: chart.support_levels[0] ?? forensics.price_usd * 0.94,
+    resistance_level: chart.resistance_levels[0] ?? forensics.price_usd * 1.08,
+    execution_quality: slippage.execution_quality_score,
+    sniper_pct: holders.sniper_analysis.supply_pct,
+    bundle_pct: holders.bundle_analysis.combined_supply_pct,
+    social_momentum: social.social_momentum_score,
+    market_regime_score: features.market_regime_encoded,
+    market_regime_label: regime.regime,
+    wash_trading_risk: volume.anomalies.wash_trading_risk,
+    bot_activity_score: volume.anomalies.bot_activity_score,
+    ml_buy_probability_override: Math.round(ml.raw_opportunity),
+    trigger_source: 'INITIAL_ANALYSIS',
+  });
+
+  if (liveSignal.decision_flow.blocked_or_changed_reason) {
+    conflicting.unshift(liveSignal.decision_flow.blocked_or_changed_reason);
+  }
+
   return {
     token_address: tokenAddress,
     symbol,
@@ -187,6 +243,8 @@ export function computeBriggScorePanel(params: {
     execution_quality: slippage.execution_quality_score,
     market_regime: regime.regime,
     action_state: actionState,
+    classification,
+    live_signal: liveSignal,
     no_trade: noTrade,
     model_outputs: {
       momentum_score: ml.momentum_score,

@@ -7,6 +7,7 @@ import type {
   ChartTimeframe,
   Horizon,
   LiveMarketTick,
+  ScannerFunnelStats,
   ScannerTokenSummary,
   TokenFullAnalysis,
 } from '../../shared/types.ts';
@@ -19,6 +20,7 @@ import { detectMarketRegime } from '../analytics/marketRegime.ts';
 import { evaluateRiskEngine } from '../analytics/riskEngine.ts';
 import { analyzeSocialAndNarrative } from '../analytics/social.ts';
 import { buildInitialSocialFeed, generateStreamingSocialEvent } from '../analytics/socialTracker.ts';
+import { reconcileScannerSlots } from '../analytics/tokenLifecycle.ts';
 import { analyzeVolume } from '../analytics/volume.ts';
 import { INITIAL_FILTER_PRESETS, SERVER_CONFIG } from '../config.ts';
 import { aggregateTokenSources } from '../connectors/aggregator.ts';
@@ -34,6 +36,7 @@ import { listPredictionsWithOutcomes, runHistoricalBacktest } from '../ml/backte
 import { buildEngineeredFeatures, FEATURE_REGISTRY } from '../ml/features.ts';
 import {
   evaluateOutcomeForPrediction,
+  getMlLearningActivityAndSummary,
   getProductionWeights,
   listHumanOverrides,
   listModelVersions,
@@ -184,6 +187,7 @@ export async function buildFullTokenAnalysis(
     symbol: forensics.symbol,
     mode,
     horizon,
+    forensics,
     features,
     liquidity,
     volume,
@@ -240,6 +244,7 @@ export async function buildFullTokenAnalysis(
 export function createApiRouter(): Router {
   const router = Router();
   ensureInitialMlData();
+  const previousScannerAddressesByMode = new Map<BriggMode, Set<string>>();
 
   router.get('/health', (_req, res) => {
     res.json(getSystemObservability());
@@ -252,85 +257,134 @@ export function createApiRouter(): Router {
       return;
     }
 
-    const { mode, horizon, preset, sortBy, q, minLiquidity, maxRisk, minOpportunity, hideNewPairs, migratedOnly, refresh } =
-      parsed.data;
+    const {
+      mode,
+      horizon,
+      preset,
+      sortBy,
+      q,
+      minLiquidity,
+      maxRisk,
+      minOpportunity,
+      hideNewPairs,
+      migratedOnly,
+      refresh,
+      discoveredLimit = 120,
+      qualityLimit = 24,
+      topLimit = 12,
+      maxStaleSeconds = 180,
+    } = parsed.data;
     const forceRefresh = refresh === 'true';
 
     try {
-      let universe = q && q.trim().length > 1
-        ? await searchDexScreenerTokens(sanitizeTextInput(q, 48))
-        : await fetchDexScreenerScannerUniverse(forceRefresh);
+      // 1. DISCOVER across DexScreener + search/boost/profile endpoints (non-crashing multi-token pool)
+      let universe =
+        q && q.trim().length > 1
+          ? await searchDexScreenerTokens(sanitizeTextInput(q, 48))
+          : await fetchDexScreenerScannerUniverse(forceRefresh, discoveredLimit);
 
       if (universe.length === 0 && q) {
-        universe = await fetchDexScreenerScannerUniverse(forceRefresh);
+        universe = await fetchDexScreenerScannerUniverse(forceRefresh, discoveredLimit);
       }
 
       const presetObj: BriggFilterPreset =
         INITIAL_FILTER_PRESETS.find((p) => p.id === preset) || INITIAL_FILTER_PRESETS[0];
 
-      // Build lightweight full analysis for ranking & explainability across universe
-      const summaries: ScannerTokenSummary[] = await Promise.all(
-        universe.slice(0, 14).map(async (item) => {
-          const full = await buildFullTokenAnalysis(item.address, mode, horizon, '15M', 1500, universe);
-          return {
-            address: full.forensics.address,
-            symbol: full.forensics.symbol,
-            name: full.forensics.name,
-            chain: 'solana',
-            age_minutes: full.forensics.age_minutes,
-            price_usd: full.forensics.price_usd,
-            price_change_5m: full.forensics.price_change_5m,
-            price_change_1h: full.forensics.price_change_1h,
-            market_cap_usd: full.forensics.market_cap_usd,
-            liquidity_usd: full.liquidity.current_liquidity_usd,
-            volume_24h_usd: full.volume.reported_volume_24h_usd,
-            holder_count: full.holders.holder_count,
-            top_10_pct: full.holders.top_10_concentration_pct,
-            sniper_pct: full.holders.sniper_analysis.supply_pct,
-            insider_exposure: full.holders.insider_analysis.exposure_score,
-            bundle_pct: full.holders.bundle_analysis.combined_supply_pct,
-            migration_status: full.forensics.migration_status,
-            social_momentum: full.social.social_momentum_score,
-            holder_growth_1h_pct: full.holders.holder_growth_1h_pct,
-            opportunity_score: full.score_panel.opportunity_score,
-            risk_score: full.score_panel.risk_score,
-            confidence_pct: full.score_panel.confidence_pct,
-            execution_quality: full.score_panel.execution_quality,
-            action_state: full.score_panel.action_state,
-            ranking_explanation:
-              full.score_panel.no_trade.triggered
-                ? full.score_panel.no_trade.headline
-                : full.score_panel.explainability.why_opportunity_exists[0]?.text || 'Balanced multi-factor flow',
-            has_source_conflict: full.conflicts.length > 0,
-            data_status: full.forensics.data_status,
-            freshness_seconds: full.freshness.updated_seconds_ago,
-            active_providers: ['dexscreener', 'mevx', 'gmgn', 'padre'],
-          };
-        })
-      );
+      // 2. VALIDATE (deduplicate, prune invalid/dead/unusable market payloads)
+      const dedupedValid: NormalizedMarketPayload[] = [];
+      const seenAddr = new Set<string>();
+      for (const item of universe) {
+        if (!item.address || seenAddr.has(item.address)) continue;
+        if (!Number.isFinite(item.price_usd) || item.price_usd <= 0) continue;
+        if (!Number.isFinite(item.liquidity_usd) || item.liquidity_usd < 1_000) continue;
+        if ((item.meta?.freshness_seconds ?? 0) > maxStaleSeconds) continue;
+        seenAddr.add(item.address);
+        dedupedValid.push(item);
+      }
 
-      const effMinLiq = minLiquidity ?? (preset !== 'GENERAL' ? presetObj.min_liquidity_usd : 0);
+      // 3. FILTER & FAST PRE-SCORE across valid pool
+      const minLiqGate = Math.max(1_000, minLiquidity ?? Math.min(presetObj.min_liquidity_usd, 8_000));
+      const passedFilterPool = dedupedValid.filter((t) => t.liquidity_usd >= minLiqGate);
+      const effectivePool = passedFilterPool.length >= 6 ? passedFilterPool : dedupedValid;
+
+      const preScoredPool = effectivePool
+        .map((t) => {
+          const total1h = Math.max(1, t.buys_1h + t.sells_1h);
+          const buyRatio = t.buys_1h / total1h;
+          const liqToMc = t.market_cap_usd > 0 ? t.liquidity_usd / t.market_cap_usd : 0.05;
+          const momScore = Math.max(0, Math.min(40, 18 + t.price_change_1h * 0.6 + t.price_change_5m * 1.1));
+          const flowScore = buyRatio * 35;
+          const depthScore = Math.min(25, Math.log10(Math.max(1000, t.liquidity_usd)) * 3.8 + Math.min(8, liqToMc * 40));
+          const cohortBonus =
+            mode === 'SHITCOIN'
+              ? (Date.now() - t.pair_created_at_ms) / 60_000 <= 4_320
+                ? 8
+                : 0
+              : (Date.now() - t.pair_created_at_ms) / 60_000 >= 43_200
+              ? 8
+              : 0;
+          return { item: t, preScore: momScore + flowScore + depthScore + cohortBonus };
+        })
+        .sort((a, b) => b.preScore - a.preScore);
+
+      // 4. ANALYZE & RANK top quality candidates deeply
+      const qualityPool = preScoredPool.slice(0, Math.min(preScoredPool.length, qualityLimit));
+      const summaries: ScannerTokenSummary[] = (
+        await Promise.allSettled(
+          qualityPool.map(async ({ item }): Promise<ScannerTokenSummary> => {
+            const full = await buildFullTokenAnalysis(item.address, mode, horizon, '15M', 1500, universe);
+            const liveSig = full.score_panel.live_signal;
+            return {
+              address: full.forensics.address,
+              symbol: full.forensics.symbol,
+              name: full.forensics.name,
+              chain: 'solana' as const,
+              age_minutes: full.forensics.age_minutes,
+              price_usd: full.forensics.price_usd,
+              price_change_5m: full.forensics.price_change_5m,
+              price_change_1h: full.forensics.price_change_1h,
+              market_cap_usd: full.forensics.market_cap_usd,
+              liquidity_usd: full.liquidity.current_liquidity_usd,
+              volume_24h_usd: full.volume.reported_volume_24h_usd,
+              holder_count: full.holders.holder_count,
+              top_10_pct: full.holders.top_10_concentration_pct,
+              sniper_pct: full.holders.sniper_analysis.supply_pct,
+              insider_exposure: full.holders.insider_analysis.exposure_score,
+              bundle_pct: full.holders.bundle_analysis.combined_supply_pct,
+              migration_status: full.forensics.migration_status,
+              social_momentum: full.social.social_momentum_score,
+              holder_growth_1h_pct: full.holders.holder_growth_1h_pct,
+              opportunity_score: full.score_panel.opportunity_score,
+              risk_score: full.score_panel.risk_score,
+              confidence_pct: full.score_panel.confidence_pct,
+              execution_quality: full.score_panel.execution_quality,
+              action_state: full.score_panel.action_state,
+              classification: full.score_panel.classification,
+              pre_dump_level: liveSig?.pre_dump.level ?? 'NORMAL',
+              pre_dump_risk_pct: liveSig?.pre_dump.risk_pct ?? 0,
+              live_signal: liveSig?.signal,
+              decision_status: liveSig?.decision_flow.decision_status,
+              ranking_explanation:
+                liveSig?.decision_flow.blocked_or_changed_reason
+                  ? liveSig.decision_flow.blocked_or_changed_reason
+                  : full.score_panel.no_trade.triggered
+                  ? full.score_panel.no_trade.headline
+                  : full.score_panel.explainability.why_opportunity_exists[0]?.text || 'Balanced multi-factor flow',
+              has_source_conflict: full.conflicts.length > 0,
+              data_status: full.forensics.data_status,
+              freshness_seconds: full.freshness.updated_seconds_ago,
+              active_providers: ['dexscreener', 'mevx', 'gmgn', 'padre'],
+            } satisfies ScannerTokenSummary;
+          })
+        )
+      )
+        .filter((r): r is PromiseFulfilledResult<ScannerTokenSummary> => r.status === 'fulfilled')
+        .map((r) => r.value);
+
       const effHideNew = hideNewPairs ? hideNewPairs === 'true' : presetObj.hide_new_pairs;
       const effMigrated = migratedOnly ? migratedOnly === 'true' : presetObj.migrated_only;
 
-      const filtered = summaries.filter((t) => {
-        if (q) {
-          const ql = q.toLowerCase();
-          const match =
-            t.symbol.toLowerCase().includes(ql) ||
-            t.name.toLowerCase().includes(ql) ||
-            t.address.toLowerCase().includes(ql);
-          if (!match && universe.length > 1) return false;
-        }
-        if (t.liquidity_usd < effMinLiq) return false;
-        if (maxRisk !== undefined && t.risk_score > maxRisk) return false;
-        if (minOpportunity !== undefined && t.opportunity_score < minOpportunity) return false;
-        if (effHideNew && t.age_minutes < 15) return false;
-        if (effMigrated && t.migration_status !== 'MIGRATED') return false;
-        return true;
-      });
-
-      filtered.sort((a, b) => {
+      const sortFn = (a: ScannerTokenSummary, b: ScannerTokenSummary) => {
         switch (sortBy) {
           case 'risk':
             return a.risk_score - b.risk_score;
@@ -349,7 +403,64 @@ export function createApiRouter(): Router {
           default:
             return b.opportunity_score - a.opportunity_score;
         }
-      });
+      };
+
+      const shitcoinCount = summaries.filter((t) => t.classification.classified_mode === 'SHITCOIN').length;
+      const memecoinCount = summaries.filter((t) => t.classification.classified_mode === 'MEMECOIN').length;
+
+      let finalTokens: ScannerTokenSummary[] = [];
+      let removedTokens: ReturnType<typeof reconcileScannerSlots>['removed'] = [];
+      let enteredCount = 0;
+
+      if (q && q.trim().length > 1) {
+        const ql = q.trim().toLowerCase();
+        const searchMatches = summaries.filter(
+          (t) =>
+            t.symbol.toLowerCase().includes(ql) ||
+            t.name.toLowerCase().includes(ql) ||
+            t.address.toLowerCase().includes(ql)
+        );
+        finalTokens = (searchMatches.length > 0 ? searchMatches : summaries).sort(sortFn).slice(0, topLimit);
+      } else {
+        const sortedCandidates = [...summaries].sort(sortFn);
+        const reconciled = reconcileScannerSlots({
+          candidates: sortedCandidates,
+          preset: presetObj,
+          mode,
+          slotCapacity: topLimit,
+          minLiquidityOverride: minLiquidity,
+          maxRiskOverride: maxRisk,
+          minOpportunityOverride: minOpportunity,
+          hideNewPairs: effHideNew,
+          migratedOnly: effMigrated,
+          previousActiveAddresses: previousScannerAddressesByMode.get(mode),
+        });
+
+        removedTokens = reconciled.removed;
+        enteredCount = reconciled.entered.length;
+
+        if (reconciled.active.length > 0) {
+          finalTokens = reconciled.active;
+        } else {
+          const modeCohort = sortedCandidates.filter((t) => t.classification.classified_mode === mode);
+          finalTokens = (modeCohort.length > 0 ? modeCohort : sortedCandidates).slice(0, topLimit);
+        }
+
+        previousScannerAddressesByMode.set(
+          mode,
+          new Set(finalTokens.map((t) => t.address))
+        );
+      }
+
+      const funnel: ScannerFunnelStats = {
+        discovered_count: universe.length,
+        valid_count: dedupedValid.length,
+        passed_filters_count: passedFilterPool.length,
+        quality_candidates_count: summaries.length,
+        top_displayed_count: finalTokens.length,
+        sources_used: ['DexScreener', 'GMGN', 'MevX', 'Padre'],
+        last_scan_ms: Date.now(),
+      };
 
       const regime = detectMarketRegime(universe);
       res.json({
@@ -357,8 +468,13 @@ export function createApiRouter(): Router {
         horizon,
         preset: presetObj,
         regime,
+        funnel,
         total_scanned: summaries.length,
-        tokens: filtered.length > 0 ? filtered : summaries,
+        shitcoin_count: shitcoinCount,
+        memecoin_count: memecoinCount,
+        removed_tokens: removedTokens,
+        entered_tokens_count: enteredCount,
+        tokens: finalTokens,
       });
     } catch (err) {
       res.status(500).json({ error: 'Scanner pipeline failure', detail: String(err) });
@@ -608,19 +724,23 @@ export function createApiRouter(): Router {
   });
 
   router.get('/ml/versions', (_req, res) => {
+    const learning = getMlLearningActivityAndSummary();
     res.json({
       versions: listModelVersions(),
       feature_registry: FEATURE_REGISTRY,
       recent_predictions: listPredictionsWithOutcomes(),
+      ...learning,
     });
   });
 
   router.post('/ml/learn', (req, res) => {
     const simulateDegradation = req.body?.simulate_degradation === true;
     const result = runDailyLearningCycle(simulateDegradation);
+    const learning = getMlLearningActivityAndSummary();
     res.json({
       ...result,
       versions: listModelVersions(),
+      ...learning,
     });
   });
 
@@ -632,7 +752,8 @@ export function createApiRouter(): Router {
     }
     try {
       const active = rollbackToModelVersion(version);
-      res.json({ active, versions: listModelVersions() });
+      const learning = getMlLearningActivityAndSummary();
+      res.json({ active, versions: listModelVersions(), ...learning });
     } catch (err) {
       res.status(404).json({ error: String(err) });
     }

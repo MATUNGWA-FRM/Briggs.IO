@@ -138,24 +138,28 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             type="button"
             onClick={() => onModeChange('SHITCOIN')}
-            className={`px-2 py-0.5 text-[11px] font-medium rounded-sm transition-colors whitespace-nowrap shrink-0 ${
+            title="Shitcoin Panel: Newly launched tokens <= 3 days old (verified by ML classifier)"
+            className={`px-2 py-0.5 text-[11px] font-medium rounded-sm transition-colors whitespace-nowrap shrink-0 inline-flex items-center gap-1 ${
               mode === 'SHITCOIN'
                 ? 'bg-[#7C5CFF]/25 text-[#C4B5FD] border border-[#7C5CFF]/50'
                 : 'text-slate-400 hover:text-slate-200 border border-transparent'
             }`}
           >
-            Shitcoin
+            <span>Shitcoin</span>
+            <span className="hidden xl:inline text-[9px] font-mono text-slate-400">≤3d</span>
           </button>
           <button
             type="button"
             onClick={() => onModeChange('MEMECOIN')}
-            className={`px-2 py-0.5 text-[11px] font-medium rounded-sm transition-colors whitespace-nowrap shrink-0 ${
+            title="Memecoin Panel: Established meme coins > 1 month old (verified by ML classifier)"
+            className={`px-2 py-0.5 text-[11px] font-medium rounded-sm transition-colors whitespace-nowrap shrink-0 inline-flex items-center gap-1 ${
               mode === 'MEMECOIN'
                 ? 'bg-[#7C5CFF]/25 text-[#C4B5FD] border border-[#7C5CFF]/50'
                 : 'text-slate-400 hover:text-slate-200 border border-transparent'
             }`}
           >
-            Memecoin
+            <span>Memecoin</span>
+            <span className="hidden xl:inline text-[9px] font-mono text-slate-400">&gt;1m</span>
           </button>
         </div>
 
